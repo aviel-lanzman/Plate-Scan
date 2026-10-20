@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1350" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <link rel="stylesheet" href="assets/base.css" />
+    <style>
+      .lines {
+        position: absolute; top: 300px; width: 100%; text-align: center;
+      }
+      .line { font-size: 118px; font-weight: 900; line-height: 1.15; }
+      .line.yellow { color: #ffcc00; }
+      .word { display: inline-block; margin: 0 14px; }
+      .plate-wrap {
+        position: absolute; top: 790px; width: 100%; display: flex; justify-content: center;
+      }
+      .beam {
+        position: absolute; top: -20px; bottom: -20px; width: 26px; left: 0;
+        background: linear-gradient(90deg, rgba(120, 255, 190, 0), rgba(120, 255, 190, 0.95), rgba(120, 255, 190, 0));
+        box-shadow: 0 0 40px 12px rgba(120, 255, 190, 0.55);
+      }
+      .found {
+        position: absolute; top: 1010px; width: 100%; text-align: center;
+        font-size: 50px; font-weight: 700; color: #9fffc9;
+      }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      class="stage"
+      data-composition-id="intro"
+      data-start="0"
+      data-duration="4"
+      data-width="1080"
+      data-height="1350"
+    >
+      <div id="glow" class="glow clip" data-start="0" data-duration="4" data-track-index="0"></div>
+      <div class="lines clip" data-start="0" data-duration="4" data-track-index="1">
+        <div class="line">
+          <span class="word w1">רכב</span><span class="word w1">חשוד</span><span class="word w1">ברחוב?</span>
+        </div>
+        <div class="line yellow">
+          <span class="word w2">סרקו</span><span class="word w2">את</span><span class="word w2">הלוחית.</span>
+        </div>
+      </div>
+      <div class="plate-wrap clip" data-start="0" data-duration="4" data-track-index="2">
+        <div id="plate" class="plate">
+          <div class="il">IL</div>
+          <div class="num">98-765-43</div>
+          <div id="beam" class="beam"></div>
+        </div>
+      </div>
+      <div id="found" class="found clip" data-start="0" data-duration="4" data-track-index="3">
+        ✓ זוהה: 98-765-43
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#glow", { scale: 0.7, opacity: 0 }, { scale: 1.1, opacity: 1, duration: 4, ease: "sine.out" }, 0);
+      tl.fromTo(".w1", { y: 90, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "back.out(1.6)", stagger: 0.12 }, 0.15);
+      tl.fromTo(".w2", { y: 90, opacity: 0 }, { y: 0, opacity: 1, duration: 0.55, ease: "back.out(1.6)", stagger: 0.12 }, 0.85);
+      tl.fromTo("#plate", { y: 160, scale: 0.7, opacity: 0 }, { y: 0, scale: 1, opacity: 1, duration: 0.7, ease: "back.out(1.4)" }, 1.55);
+      // The beam sweeps right to left across the plate, as if reading it.
+      tl.fromTo("#beam", { x: 700, opacity: 0 }, { x: -40, opacity: 1, duration: 0.9, ease: "power1.inOut" }, 2.15);
+      tl.to("#beam", { opacity: 0, duration: 0.2 }, 3.05);
+      tl.fromTo("#found", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: "power2.out" }, 3.0);
+      tl.fromTo("#plate", { scale: 1 }, { scale: 1.06, duration: 0.25, yoyo: true, repeat: 1, ease: "sine.inOut" }, 3.0);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["intro"] = tl;
+    </script>
+  </body>
+</html>

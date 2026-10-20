@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1080, height=1350" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.14.2/dist/gsap.min.js"></script>
+    <link rel="stylesheet" href="../assets/base.css" />
+    <style>
+      .center { position: absolute; width: 100%; text-align: center; }
+      #icon {
+        position: absolute; top: 190px; left: 400px; width: 280px; height: 280px;
+        border-radius: 64px; box-shadow: 0 40px 90px rgba(0, 0, 0, 0.5);
+      }
+      #name { top: 520px; font-size: 128px; font-weight: 900; }
+      #tagline { top: 690px; font-size: 52px; font-weight: 500; color: #b9c6ff; }
+      .chips {
+        position: absolute; top: 810px; width: 100%;
+        display: flex; justify-content: center; gap: 22px;
+      }
+      .chip {
+        font-size: 44px; font-weight: 700; padding: 14px 34px; border-radius: 999px;
+        background: rgba(255, 255, 255, 0.1); border: 2px solid rgba(255, 255, 255, 0.25);
+      }
+      #store {
+        top: 960px; left: 255px; width: 570px; height: 112px; border-radius: 999px;
+        background: #ffcc00; color: #061033; font-size: 54px; font-weight: 900;
+        display: flex; align-items: center; justify-content: center;
+      }
+      #credits { top: 1150px; font-size: 34px; font-weight: 500; color: #b9c6ff; }
+      #fine { top: 1215px; font-size: 28px; font-weight: 400; color: #8f9cd4; }
+    </style>
+  </head>
+  <body>
+    <div
+      id="root"
+      class="stage"
+      data-composition-id="outro"
+      data-start="0"
+      data-duration="5"
+      data-width="1080"
+      data-height="1350"
+    >
+      <div id="glow" class="glow clip" data-start="0" data-duration="5" data-track-index="0"></div>
+      <img id="icon" class="clip" src="../assets/icon.png" alt="" data-start="0" data-duration="5" data-track-index="1" />
+      <div id="name" class="center clip" data-start="0" data-duration="5" data-track-index="2">סורק לוחיות</div>
+      <div id="tagline" class="center clip" data-start="0" data-duration="5" data-track-index="3">
+        בודקים רכב חשוד תוך שניות
+      </div>
+      <div class="chips clip" data-start="0" data-duration="5" data-track-index="4">
+        <div class="chip">חינם</div>
+        <div class="chip">בלי פרסומות</div>
+        <div class="chip">בלי חשבונות</div>
+      </div>
+      <div id="store" class="center clip" data-start="0" data-duration="5" data-track-index="5">
+        בקרוב ב-Google Play
+      </div>
+      <div id="credits" class="center clip" data-start="0" data-duration="5" data-track-index="6">
+        נבנה עם Claude Code
+      </div>
+      <div id="fine" class="center clip" data-start="0" data-duration="5" data-track-index="7">
+        אינה אפליקציה ממשלתית · מספרי הרכב בסרטון להמחשה בלבד
+      </div>
+    </div>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#glow", { scale: 0.8, opacity: 0 }, { scale: 1.15, opacity: 1, duration: 5, ease: "sine.out" }, 0);
+      tl.fromTo("#icon", { scale: 0.3, opacity: 0, rotation: -12 }, { scale: 1, opacity: 1, rotation: 0, duration: 0.8, ease: "back.out(1.7)" }, 0.1);
+      tl.fromTo("#name", { y: 60, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 0.55);
+      tl.fromTo("#tagline", { y: 40, opacity: 0 }, { y: 0, opacity: 1, duration: 0.6, ease: "power3.out" }, 0.85);
+      tl.fromTo(".chip", { y: 40, opacity: 0, scale: 0.8 }, { y: 0, opacity: 1, scale: 1, duration: 0.45, ease: "back.out(1.8)", stagger: 0.15 }, 1.25);
+      tl.fromTo("#store", { scale: 0.6, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.6, ease: "back.out(1.6)" }, 2.0);
+      tl.to("#store", { scale: 1.05, duration: 0.5, yoyo: true, repeat: 3, ease: "sine.inOut" }, 2.7);
+      tl.fromTo("#credits", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 2.5);
+      tl.fromTo("#fine", { opacity: 0 }, { opacity: 1, duration: 0.6 }, 2.8);
+      window.__timelines = window.__timelines || {};
+      window.__timelines["outro"] = tl;
+    </script>
+  </body>
+</html>

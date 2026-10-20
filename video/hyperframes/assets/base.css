@@ -1,0 +1,32 @@
+/* Shared by the intro and outro. Heebo is the SIL OFL font in ../assets/fonts. */
+@font-face { font-family: Heebo; src: url("fonts/Heebo-Regular.ttf"); font-weight: 400; }
+@font-face { font-family: Heebo; src: url("fonts/Heebo-Medium.ttf"); font-weight: 500; }
+@font-face { font-family: Heebo; src: url("fonts/Heebo-Bold.ttf"); font-weight: 700; }
+@font-face { font-family: Heebo; src: url("fonts/Heebo-ExtraBold.ttf"); font-weight: 800; }
+@font-face { font-family: Heebo; src: url("fonts/Heebo-Black.ttf"); font-weight: 900; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 1080px; height: 1350px; overflow: hidden; background: #061033; }
+.stage {
+  position: relative; width: 1080px; height: 1350px; overflow: hidden;
+  font-family: Heebo, sans-serif; color: #fff; direction: rtl;
+  background: radial-gradient(120% 80% at 50% 20%, #0d2266 0%, #061033 60%, #030a22 100%);
+}
+.glow {
+  position: absolute; width: 900px; height: 900px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 92, 255, 0.45) 0%, rgba(0, 56, 184, 0) 65%);
+  left: 90px; top: 120px;
+}
+.plate {
+  display: inline-flex; direction: ltr; height: 150px; background: #ffcc00;
+  border: 7px solid #000; border-radius: 22px; overflow: hidden; position: relative;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+}
+.plate .il {
+  background: #0038b8; color: #fff; font-weight: 700; font-size: 46px;
+  padding: 0 22px; display: flex; align-items: center;
+}
+.plate .num {
+  color: #000; font-weight: 900; font-size: 100px; letter-spacing: 4px;
+  padding: 0 40px; display: flex; align-items: center; font-variant-numeric: tabular-nums;
+}
