@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -9,6 +10,7 @@ import 'package:plate_scan/app_services.dart';
 import 'package:plate_scan/main.dart';
 import 'package:plate_scan/models/vehicle_result.dart';
 import 'package:plate_scan/screens/history_screen.dart';
+import 'package:plate_scan/screens/legal_doc_screen.dart';
 import 'package:plate_scan/screens/result_screen.dart';
 import 'package:plate_scan/services/history_store.dart';
 import 'package:plate_scan/services/vehicle_lookup_service.dart';
@@ -57,13 +59,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('לפני שמתחילים'), findsOneWidget);
 
-    await tester.tap(find.text('הבנתי'));
+    await tester.tap(find.text('מסכים'));
     await tester.pumpAndSettle();
     expect(find.text('כוון וצלם'), findsOneWidget);
     expect(find.text('סריקה רציפה'), findsOneWidget);
 
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getBool('disclaimer_accepted_v1'), isTrue);
+    expect(prefs.getBool('disclaimer_accepted_v2'), isTrue);
   });
 
   testWidgets('result screen shows an off-road vehicle and saves it', (
@@ -108,7 +110,7 @@ void main() {
     final services = _services();
     await tester.pumpWidget(PlateScanApp(services: services));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('הבנתי'));
+    await tester.tap(find.text('מסכים'));
     await tester.pumpAndSettle();
 
     await tester.scrollUntilVisible(find.byType(TextField), 200);
@@ -116,7 +118,7 @@ void main() {
     await tester.testTextInput.receiveAction(TextInputAction.done);
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(
-      find.text('התקשר 100'),
+      find.text('SMS למשטרה, לבעלי מוגבלות שמיעה או דיבור'),
       200,
       scrollable: find.byType(Scrollable).last,
     );
@@ -131,6 +133,21 @@ void main() {
     await tester.tap(find.text('היסטוריית בדיקות'));
     await tester.pumpAndSettle();
     expect(find.text('ירד מהכביש'), findsOneWidget);
+  });
+
+  testWidgets('about lists the bundled legal documents', (tester) async {
+    SharedPreferences.setMockInitialValues({'disclaimer_accepted_v2': true});
+    await tester.pumpWidget(PlateScanApp(services: _services()));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('מידע ותנאי שימוש'));
+    await tester.pumpAndSettle();
+
+    for (final doc in LegalDoc.values) {
+      expect(find.text(doc.title), findsOneWidget);
+      final html = await rootBundle.loadString(doc.asset);
+      expect(html, contains('<html lang="he" dir="rtl">'));
+    }
+    expect(find.text('רישיונות קוד פתוח'), findsOneWidget);
   });
 
   test('a failed save does not throw', () async {

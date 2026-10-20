@@ -24,16 +24,18 @@
 <h1>מדיניות פרטיות: סורק לוחיות (PlateScan)</h1>
 <p class="muted">עודכן לאחרונה: 20 באוקטובר 2026</p>
 
-<p>סורק לוחיות היא אפליקציה חינמית שמזהה לוחית רישוי ישראלית בעזרת המצלמה, ובודקת במאגרי מידע ציבוריים אם הרכב ירד מהכביש, אינו פעיל או דווח כגנוב. לאפליקציה אין שרת, אין חשבונות משתמש, אין פרסומות ואין כלי ניתוח (analytics).</p>
+<p>סורק לוחיות היא אפליקציה חינמית שמזהה לוחית רישוי ישראלית בעזרת המצלמה, ובודקת במאגרי מידע ציבוריים אם הרכב ירד מהכביש, אינו פעיל או דווח כגנוב. לאפליקציה אין שרת, אין חשבונות משתמש, אין פרסומות, ואין לנו כלי ניתוח (analytics) או גישה למידע עליך. החריג היחיד הוא נתוני האבחון הטכניים שספריית זיהוי הטקסט של Google שולחת, כמפורט בהמשך.</p>
 
 <h2>מה קורה למידע</h2>
 <ul>
-  <li><strong>מצלמה:</strong> התמונה מעובדת במכשיר בלבד, בעזרת Google ML Kit שפועל באופן מקומי. תמונות לא נשמרות ולא נשלחות לשום מקום.</li>
+  <li><strong>מצלמה:</strong> התמונה מעובדת במכשיר בלבד, בעזרת Google ML Kit שפועל באופן מקומי. התמונות עצמן לא נשלחות ל-Google.</li>
+  <li><strong>נתוני אבחון של Google ML Kit:</strong> ספריית זיהוי הטקסט שולחת ל-Google, בחיבור מוצפן, נתונים טכניים לצורך אבחון וניתוח שימוש: פרטי המכשיר (יצרן, דגם וגרסת מערכת), שם האפליקציה וגרסתה, מזהה התקנה, מדדי ביצועים וקודי שגיאה. Google מצהירה שאינה מעבירה אותם לצד שלישי. אין לנו גישה לנתונים האלה. פרטים: <a href="https://developers.google.com/ml-kit/android-data-disclosure">גילוי הנתונים של ML Kit</a>.</li>
+  <li><strong>תמונות לדיווח:</strong> כשמספר רישוי מזוהה, עד שלוש תמונות שבהן הוא נקלט נשמרות בתיקייה זמנית של האפליקציה, כדי שתוכל לצרף אותן לדיווח. הן נמחקות כשאתה סוגר את מסך התוצאה או יוצא מהסריקה הרציפה, ולכל המאוחר בפתיחה הבאה של האפליקציה. הן יוצאות מהמכשיר רק אם תלחץ "שתף" ותבחר אפליקציה לשלוח אליה, ואז הן נשלחות רק אליה. התמונות עלולות לכלול רכבים ואנשים שנקלטו במצלמה: שתף אותן רק עם המשטרה.</li>
   <li><strong>מספר רישוי:</strong> מספר הרישוי שזוהה או הוקלד נשלח למאגרי הנתונים הפתוחים של משרד התחבורה באתר <a href="https://data.gov.il">data.gov.il</a> לצורך הבדיקה. לא נשלח מידע נוסף שמזהה אותך.</li>
   <li><strong>בדיקת גניבה:</strong> כשאתה בוחר לבדוק אם רכב גנוב, נפתח בתוך האפליקציה האתר הרשמי של משטרת ישראל (<a href="https://www.gov.il/apps/police/stolencar/">gov.il</a>). האתר מוגן ב-Google reCAPTCHA. על השימוש בו חלים תנאי השימוש ומדיניות הפרטיות של אתר gov.il ושל Google.</li>
-  <li><strong>מיקום:</strong> הגישה למיקום מתבקשת רק כשאתה לוחץ על "שתף פרטי דיווח". המיקום משמש להכנת טקסט הדיווח, ונשלח רק לאפליקציה שאתה בוחר לשתף איתה. האפליקציה לא שומרת את המיקום ולא שולחת אותו בעצמה.</li>
-  <li><strong>היסטוריית בדיקות:</strong> נשמרת במכשיר בלבד, ואפשר למחוק אותה בכל רגע ממסך ההיסטוריה. הסרת האפליקציה מוחקת אותה.</li>
-  <li><strong>חיוג ל-100:</strong> הכפתור פותח את החייגן של הטלפון. האפליקציה לא מבצעת שיחות בעצמה.</li>
+  <li><strong>מיקום:</strong> הגישה למיקום מתבקשת רק כשאתה לוחץ על "שתף" בכרטיס הדיווח. המיקום משמש להכנת טקסט הדיווח, ונשלח רק לאפליקציה שאתה בוחר לשתף איתה. האפליקציה לא שומרת את המיקום ולא שולחת אותו בעצמה.</li>
+  <li><strong>היסטוריית בדיקות:</strong> נשמרת במכשיר בלבד, בלי מיקום, ואפשר למחוק אותה בכל רגע ממסך ההיסטוריה. בסריקה רציפה נשמרים בה רק רכבים שעליהם הייתה התרעה או שפתחת, ולא כל רכב שעבר מול המצלמה. הסרת האפליקציה מוחקת אותה.</li>
+  <li><strong>חיוג ל-100 ו-SMS:</strong> הכפתורים פותחים את החייגן או את אפליקציית ההודעות של הטלפון, עם טקסט הדיווח (כולל המיקום) מוכן לשליחה במקרה של SMS. האפליקציה לא מבצעת שיחות ולא שולחת הודעות בעצמה.</li>
 </ul>
 
 <h2>שיתוף ומכירה של מידע</h2>
@@ -54,16 +56,18 @@
 <h1>Privacy Policy: PlateScan</h1>
 <p class="muted">Last updated: October 20, 2026</p>
 
-<p>PlateScan is a free app that reads Israeli licence plates with the camera and checks public datasets to see whether a vehicle was taken off the road, is inactive, or was reported stolen. The app has no server, no user accounts, no ads and no analytics.</p>
+<p>PlateScan is a free app that reads Israeli licence plates with the camera and checks public datasets to see whether a vehicle was taken off the road, is inactive, or was reported stolen. The app has no server, no user accounts and no ads, and we have no analytics or access to any data about you. The only exception is the technical diagnostics sent by Google's text recognition library, described below.</p>
 
 <h2>How data is handled</h2>
 <ul>
-  <li><strong>Camera:</strong> frames are processed on the device only, using Google ML Kit on-device text recognition. Images are never stored or transmitted.</li>
+  <li><strong>Camera:</strong> frames are processed on the device only, using Google ML Kit on-device text recognition. The images themselves are not sent to Google.</li>
+  <li><strong>Google ML Kit diagnostics:</strong> the text recognition library sends Google, over an encrypted connection, technical data for diagnostics and usage analytics: device details (manufacturer, model and OS version), the app's name and version, a per-installation identifier, performance metrics and error codes. Google states that it does not transfer this data to third parties. We have no access to it. Details: <a href="https://developers.google.com/ml-kit/android-data-disclosure">ML Kit data disclosure</a>.</li>
+  <li><strong>Report photos:</strong> when a plate is recognized, up to three frames it was read in are saved in the app's temporary folder so you can attach them to a report. They are deleted when you close the result screen or leave continuous scanning, and at the latest the next time the app starts. They leave the device only if you tap "Share" and pick an app, and then only to that app. Photos may show vehicles and people the camera captured: share them only with the police.</li>
   <li><strong>Plate numbers:</strong> the recognized or typed plate number is sent to the Israeli Ministry of Transport open-data API at <a href="https://data.gov.il">data.gov.il</a> to perform the lookup. Nothing that identifies you is sent.</li>
   <li><strong>Stolen-vehicle check:</strong> when you choose to run it, the official Israel Police page (<a href="https://www.gov.il/apps/police/stolencar/">gov.il</a>) opens inside the app. It is protected by Google reCAPTCHA. The gov.il and Google terms and privacy policies apply to that page.</li>
-  <li><strong>Location:</strong> requested only when you tap "Share report". It is used to compose the report text and goes only to the app you choose to share with. PlateScan does not store or transmit it on its own.</li>
-  <li><strong>History:</strong> stored on your device only. You can delete it at any time from the History screen, and uninstalling the app removes it.</li>
-  <li><strong>Calling 100:</strong> the button opens your phone's dialer. The app never places calls by itself.</li>
+  <li><strong>Location:</strong> requested only when you tap "Share" on the report card. It is used to compose the report text and goes only to the app you choose to share with. PlateScan does not store or transmit it on its own.</li>
+  <li><strong>History:</strong> stored on your device only, without location. You can delete it at any time from the History screen. In continuous scanning it keeps only vehicles that raised an alert or that you opened, not every vehicle that passed the camera. Uninstalling the app removes it.</li>
+  <li><strong>Calling 100 and SMS:</strong> the buttons open your phone's dialer or messaging app, with the report text (including the location) ready to send in the case of SMS. The app never places calls or sends messages by itself.</li>
 </ul>
 
 <h2>Sharing and sale of data</h2>

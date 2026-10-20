@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>הצהרת נגישות – סורק לוחיות (PlateScan)</title>
+<style>
+  :root { --fg: #1a1a1a; --muted: #555; --bg: #ffffff; --accent: #0038b8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --fg: #ececec; --muted: #aaa; --bg: #121212; --accent: #8fb0ff; }
+  }
+  body { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+         line-height: 1.7; max-width: 760px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { color: var(--accent); margin-bottom: 4px; }
+  h2 { margin-top: 32px; }
+  .muted { color: var(--muted); }
+  a { color: var(--accent); }
+  hr { margin: 48px 0; border: none; border-top: 1px solid #8884; }
+  [lang="en"] { direction: ltr; text-align: left; }
+</style>
+</head>
+<body>
+
+<h1>הצהרת נגישות: סורק לוחיות (PlateScan)</h1>
+<p class="muted">עודכנה לאחרונה: 20 באוקטובר 2026</p>
+
+<p>אנחנו רוצים שכל אחד, כולל אנשים עם מוגבלות, יוכל להשתמש בסורק לוחיות. האפליקציה נבנתה כך שתעבוד עם כלי הנגישות המובנים באנדרואיד וב-iOS, בשאיפה לעמוד ברמה AA של הנחיות WCAG 2.0, שעליהן מבוסס התקן הישראלי ת"י 5568, ככל שהן חלות על אפליקציה.</p>
+
+<h2>מה נעשה באפליקציה</h2>
+<ul>
+  <li><strong>קורא מסך (TalkBack ו-VoiceOver):</strong> לכפתורים יש תוויות בעברית, מספר הרישוי מוקרא ספרה אחר ספרה, ומספר שזוהה במצלמה או התרעה בסריקה הרציפה מוכרזים בקול.</li>
+  <li><strong>גודל טקסט:</strong> האפליקציה משתמשת בגודל הגופן שנבחר בהגדרות המכשיר, ונבדקה בגודל של עד 200%.</li>
+  <li><strong>ניגודיות וצבע:</strong> הצבעים של תוצאות הבדיקה עומדים ביחס ניגודיות של 4.5:1 לפחות, והתוצאה מוצגת תמיד גם במילים ובסמל, לא רק בצבע. יש תמיכה במצב כהה.</li>
+  <li><strong>דיווח בלי שיחה קולית:</strong> מי שמתקשה לשמוע או לדבר יכול לשלוח SMS מוכן, עם פרטי הרכב והמיקום, לקו הייעודי של המשטרה לבעלי מוגבלות שמיעה או דיבור.</li>
+  <li><strong>חלופה למצלמה:</strong> אפשר להקליד את מספר הרישוי במקום לסרוק אותו, ולקבל את אותה בדיקה.</li>
+  <li><strong>התרעות:</strong> התרעה על רכב חשוד ניתנת ברטט ובכיתוב על המסך, ובאנדרואיד גם בצליל.</li>
+</ul>
+
+<h2>מגבלות ידועות</h2>
+<ul>
+  <li>סריקה במצלמה מחייבת לכוון את הטלפון אל הלוחית. מי שמתקשה בכך יכול להקליד את המספר.</li>
+  <li>בדיקת הגניבה מתבצעת באתר של משטרת ישראל, שנפתח בתוך האפליקציה. הנגישות של האתר באחריות מפעיליו.</li>
+  <li>האפליקציה פועלת במצב אנכי (Portrait) בלבד, כי זיהוי הלוחית מהמצלמה מותאם לכיוון הזה.</li>
+</ul>
+
+<h2>נתקלת בבעיה?</h2>
+<p>אם משהו באפליקציה אינו נגיש לך, נשמח לשמוע ולתקן. כתוב לנו אל <a href="mailto:YOUR_EMAIL">YOUR_EMAIL</a>, ותאר את הבעיה, את המסך שבו נתקלת בה ואת סוג המכשיר וכלי הנגישות שבהם אתה משתמש.</p>
+
+<hr>
+
+<div lang="en">
+<h1>Accessibility Statement: PlateScan</h1>
+<p class="muted">Last updated: October 20, 2026</p>
+
+<p>We want everyone, including people with disabilities, to be able to use PlateScan. The app is built to work with the accessibility features built into Android and iOS, aiming to meet WCAG 2.0 level AA, on which Israeli Standard IS 5568 is based, as far as it applies to an app.</p>
+
+<h2>What the app does</h2>
+<ul>
+  <li><strong>Screen readers (TalkBack and VoiceOver):</strong> buttons have Hebrew labels, plate numbers are read digit by digit, and a plate recognized by the camera or a continuous-scan alert is announced.</li>
+  <li><strong>Text size:</strong> the app follows the device font size and was tested at up to 200%.</li>
+  <li><strong>Contrast and colour:</strong> result colours have a contrast ratio of at least 4.5:1, and results are always shown in words and with an icon, never by colour alone. Dark mode is supported.</li>
+  <li><strong>Reporting without a voice call:</strong> people who cannot easily hear or speak can send a ready SMS, with the vehicle details and location, to the police's dedicated line for people with hearing or speech disabilities.</li>
+  <li><strong>Alternative to the camera:</strong> you can type the plate number instead of scanning it and get the same check.</li>
+  <li><strong>Alerts:</strong> an alert about a suspicious vehicle is given by vibration and on-screen text, and on Android also by sound.</li>
+</ul>
+
+<h2>Known limitations</h2>
+<ul>
+  <li>Scanning requires pointing the phone at the plate. If that is hard for you, type the number instead.</li>
+  <li>The stolen-vehicle check runs on the Israel Police website, opened inside the app. Its accessibility is the responsibility of its operators.</li>
+  <li>The app works in portrait orientation only, because plate recognition is tuned for it.</li>
+</ul>
+
+<h2>Found a problem?</h2>
+<p>If something in the app is not accessible to you, we want to hear about it and fix it. Write to <a href="mailto:YOUR_EMAIL">YOUR_EMAIL</a> and describe the problem, the screen where it happened, and your device and assistive technology.</p>
+</div>
+
+</body>
+</html>

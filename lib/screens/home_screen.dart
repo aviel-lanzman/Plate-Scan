@@ -5,8 +5,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../app_services.dart';
 import '../services/plate_parser.dart';
 import '../util/app_name.dart';
+import 'about_screen.dart';
 import 'continuous_scan_screen.dart';
 import 'history_screen.dart';
+import 'legal_doc_screen.dart';
 import 'result_screen.dart';
 import 'single_scan_screen.dart';
 
@@ -20,7 +22,8 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const _disclaimerKey = 'disclaimer_accepted_v1';
+  // v2 added the terms of use and report photos, so v1 users accept again.
+  static const _disclaimerKey = 'disclaimer_accepted_v2';
 
   final _plateController = TextEditingController();
   String? _plateError;
@@ -46,31 +49,59 @@ class _HomeScreenState extends State<HomeScreen> {
       // Without storage, show the disclaimer every launch rather than never.
     }
     if (!mounted) return;
-    await _showDisclaimer();
+    await _showDisclaimer(firstRun: true);
     await prefs?.setBool(_disclaimerKey, true);
   }
 
-  Future<void> _showDisclaimer() => showDialog<void>(
+  /// On first run the user accepts the terms; later it is just a reminder.
+  Future<void> _showDisclaimer({bool firstRun = false}) => showDialog<void>(
     context: context,
-    barrierDismissible: false,
+    barrierDismissible: !firstRun,
     builder: (context) => AlertDialog(
       title: const Text('לפני שמתחילים'),
-      content: const SingleChildScrollView(
-        child: Text(
-          '• אין להשתמש באפליקציה בזמן נהיגה. הסריקה הרציפה מיועדת לנוסע בלבד.\n\n'
-          '• אין להתעמת עם נהג או לנסות לעצור רכב. אם נתקלת ברכב חשוד, דווח למוקד 100.\n\n'
-          '• המידע מגיע ממאגרי משרד התחבורה ומאתר משטרת ישראל, ואינו מהווה אישור לכך שרכב גנוב או לא. '
-          'המאגרים מתעדכנים מדי יום, וזיהוי המספר מהמצלמה עלול לטעות. תמיד ודא שהמספר נקרא נכון.\n\n'
-          '• רק מספר הרישוי נשלח לבדיקה. ההיסטוריה נשמרת במכשיר בלבד.\n\n'
-          '• האפליקציה אינה קשורה למשטרת ישראל, למשרד התחבורה או לכל גוף ממשלתי אחר. '
-          'מקורות המידע: מאגרי משרד התחבורה באתר data.gov.il, '
-          'ושירות "רכב גנוב" של משטרת ישראל באתר gov.il.',
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '• אין להשתמש באפליקציה בזמן נהיגה. הסריקה הרציפה מיועדת לנוסע בלבד.\n\n'
+              '• אין להתעמת עם נהג או לנסות לעצור רכב. אם נתקלת ברכב חשוד, דווח למוקד 100.\n\n'
+              '• המידע מגיע ממאגרי משרד התחבורה ומאתר משטרת ישראל, ואינו מהווה אישור לכך שרכב גנוב או לא. '
+              'המאגרים מתעדכנים מדי יום, וזיהוי המספר מהמצלמה עלול לטעות. תמיד ודא שהמספר נקרא נכון.\n\n'
+              '• שתף דיווחים ותמונות רק עם המשטרה. אין לפרסם מספרי רכב, תמונות או חשדות ברשתות החברתיות.\n\n'
+              '• רק מספר הרישוי נשלח לבדיקה. ההיסטוריה ותמונות הסריקה נשמרות במכשיר בלבד.\n\n'
+              '• האפליקציה אינה קשורה למשטרת ישראל, למשרד התחבורה או לכל גוף ממשלתי אחר. '
+              'מקורות המידע: מאגרי משרד התחבורה באתר data.gov.il, '
+              'ושירות "רכב גנוב" של משטרת ישראל באתר gov.il.',
+            ),
+            if (firstRun) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'בלחיצה על "מסכים" אתה מאשר את תנאי השימוש ואת מדיניות הפרטיות.',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              Wrap(
+                children: [
+                  for (final doc in [LegalDoc.terms, LegalDoc.privacy])
+                    TextButton(
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute<void>(
+                          builder: (_) => LegalDocScreen(doc),
+                        ),
+                      ),
+                      child: Text(doc.title),
+                    ),
+                ],
+              ),
+            ],
+          ],
         ),
       ),
       actions: [
         FilledButton(
           onPressed: () => Navigator.pop(context),
-          child: const Text('הבנתי'),
+          child: Text(firstRun ? 'מסכים' : 'סגור'),
         ),
       ],
     ),
@@ -100,7 +131,8 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             tooltip: 'מידע ותנאי שימוש',
             icon: const Icon(Icons.info_outline),
-            onPressed: _showDisclaimer,
+            onPressed: () =>
+                _open(AboutScreen(onShowGuidelines: _showDisclaimer)),
           ),
         ],
       ),
@@ -174,6 +206,17 @@ class _HomeScreenState extends State<HomeScreen> {
               'מקורות: מאגרי משרד התחבורה ב-data.gov.il ואתר משטרת ישראל. '
               'האפליקציה אינה אפליקציה ממשלתית. בחירום: 100.',
               style: theme.textTheme.bodySmall,
+            ),
+            // The accessibility regulations ask for the statement to be easy
+            // to find, so the documents are linked here too.
+            Wrap(
+              children: [
+                for (final doc in LegalDoc.values)
+                  TextButton(
+                    onPressed: () => _open(LegalDocScreen(doc)),
+                    child: Text(doc.title),
+                  ),
+              ],
             ),
           ],
         ),

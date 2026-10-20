@@ -8,6 +8,8 @@
 | `store/feature_graphic_1024x500.png` | תמונה ראשית (Feature graphic) |
 | `store/screenshots/` | צילומי מסך לטלפון (1080×1920) |
 | `docs/privacy-policy.html` | מדיניות פרטיות, בעברית ובאנגלית |
+| `docs/terms.html` | תנאי שימוש, בעברית ובאנגלית |
+| `docs/accessibility.html` | הצהרת נגישות, בעברית ובאנגלית |
 | `android/key.properties.example` | תבנית לפרטי מפתח החתימה |
 
 - **מזהה האפליקציה:** `il.aviel.plate_scan`. אי אפשר לשנות אותו אחרי ההעלאה הראשונה.
@@ -51,15 +53,21 @@ flutter build apk --release --target-platform android-arm64
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 ```
 
-בדוק: כוון וצלם, סריקה רציפה, הקלדת מספר, בדיקת גניבה, היסטוריה, ושהחלון "לפני שמתחילים" לא חוזר בכל פתיחה.
+בדוק: כוון וצלם, סריקה רציפה (כולל צליל ההתרעה), הקלדת מספר, בדיקת גניבה, היסטוריה, שיתוף דיווח עם תמונות (שהתמונות עומדות נכון ושהטקסט מצורף), כפתור ה-SMS, המסמכים במסך "מידע ותנאי שימוש", ושהחלון "לפני שמתחילים" לא חוזר בכל פתיחה.
+
+וודא שלא נשאר `YOUR_EMAIL` במסמכים, כי הם מוצגים גם בתוך האפליקציה:
+
+```bash
+grep -l YOUR_EMAIL docs/*.html   # צריך להחזיר כלום
+```
 
 הכללים שמונעים את התקלות האלה נמצאים ב-`android/app/proguard-rules.pro`. פלאגין חדש שקורא לקוד native דרך JNI עלול לדרוש כלל נוסף שם.
 
 ### 3. מדיניות הפרטיות בכתובת ציבורית
 
-1. החלף את `YOUR_EMAIL` ב-`docs/privacy-policy.html` בכתובת המייל שלך. הכתובת תהיה ציבורית.
+1. החלף את `YOUR_EMAIL` בכתובת המייל שלך בשלושת המסמכים ב-`docs/` (מדיניות פרטיות, תנאי שימוש, הצהרת נגישות). הכתובת תהיה ציבורית, ותופיע גם בתוך האפליקציה.
 2. העלה את הפרויקט ל-GitHub, ובהגדרות הריפו בחר **Pages** ← Branch `main`, תיקייה `/docs`.
-3. הכתובת תהיה `https://<username>.github.io/<repo>/privacy-policy.html`.
+3. הכתובת תהיה `https://<username>.github.io/<repo>/privacy-policy.html`. תנאי השימוש והצהרת הנגישות יהיו לידה (`terms.html`, `accessibility.html`).
 
 ### 4. Play Console
 
@@ -99,10 +107,10 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 • סריקה רציפה: בודקת כל לוחית שנקלטת ומתריעה ברטט, צליל ובאנר על רכב שירד מהכביש. לנוסעים בלבד, לא בזמן נהיגה.
 
 דיווח:
-כפתור חיוג ל-100 ושיתוף פרטי דיווח (מספר, פרטי רכב, מיקום ושעה) בלחיצה אחת. אין דיווח אוטומטי.
+כפתור חיוג ל-100, ושיתוף דיווח מוכן בלחיצה אחת: מספר, פרטי רכב, מיקום, שעה ותמונות שהמצלמה קלטה בזמן הסריקה. לבעלי מוגבלות שמיעה או דיבור: SMS מוכן לקו הייעודי של המשטרה. אין דיווח אוטומטי: אתה בוחר למי לשלוח.
 
 פרטיות:
-זיהוי הלוחית מתבצע במכשיר. רק מספר הרישוי נשלח לבדיקה, וההיסטוריה נשמרת במכשיר בלבד. אין חשבונות, אין פרסומות ואין מעקב.
+זיהוי הלוחית מתבצע במכשיר. רק מספר הרישוי נשלח לבדיקה. ההיסטוריה ותמונות הסריקה נשמרות במכשיר בלבד, והתמונות נמחקות כשמסיימים. אין חשבונות ואין פרסומות. ספריית זיהוי הטקסט של Google שולחת רק נתוני אבחון טכניים, כמפורט במדיניות הפרטיות.
 
 מקורות המידע:
 • כלי רכב שירדו מהכביש: https://data.gov.il/dataset/reshev_bitul_sofi
@@ -142,10 +150,10 @@ Two scanning modes:
 • Continuous: checks every plate it sees and alerts on off-road vehicles. For passengers only, never while driving.
 
 Reporting:
-Call 100 or share a ready-made report (plate, vehicle details, location and time) with one tap. Nothing is reported automatically.
+Call 100, or share a ready-made report with one tap: plate, vehicle details, location, time and the photos the camera captured while scanning. For people with hearing or speech disabilities: a ready SMS to the police's dedicated line. Nothing is reported automatically: you choose where it goes.
 
 Privacy:
-Recognition runs on your device. Only the plate number is sent for lookup, and history stays on your phone. No accounts, no ads, no tracking.
+Recognition runs on your device. Only the plate number is sent for lookup. History and scan photos stay on your phone, and the photos are deleted when you are done. No accounts, no ads. Google's text recognition library sends only technical diagnostics, as described in the privacy policy.
 
 Data sources:
 • Vehicles taken off the road: https://data.gov.il/dataset/reshev_bitul_sofi
@@ -189,13 +197,26 @@ No.
 
 ### Data safety
 
-**Does your app collect or share any of the required user data types? No.** הנימוקים:
-- **מצלמה:** מעובדת במכשיר ולא יוצאת ממנו.
-- **מספר רישוי:** נשלח ל-data.gov.il לצורך הבדיקה. זה לא מידע אישי על המשתמש.
-- **מיקום:** נקרא רק כשהמשתמש לוחץ "שתף", ויוצא מהמכשיר רק דרך תפריט השיתוף, לאפליקציה שהמשתמש בוחר. גוגל מחריגה שיתוף שהמשתמש יוזם בעצמו מהגדרת "איסוף".
-- **היסטוריה:** נשמרת במכשיר בלבד.
+**Does your app collect or share any of the required user data types? Yes**, בגלל ספריית ML Kit בלבד. הטופס חייב לכלול גם נתונים שספריות צד שלישי שולחות, ו-ML Kit שולחת ל-Google נתוני אבחון ([גילוי הנתונים של ML Kit](https://developers.google.com/ml-kit/android-data-disclosure)).
 
-אם בכל זאת תעדיף לסמן את המיקום, ענה: Location ← Approximate/Precise ← Collected: No, Shared: Yes ← User-initiated, Optional, App functionality.
+| סוג נתון | Collected | Shared | פרטים |
+|---|---|---|---|
+| Device or other IDs | Yes | No | מזהה התקנה של ML Kit |
+| App info and performance → Diagnostics | Yes | No | מדדי ביצועים וקודי שגיאה של ML Kit |
+
+לשני הסוגים ענה:
+- **Is this data processed ephemerally?** No.
+- **Is it required or optional?** Required (אי אפשר לכבות את זה ב-ML Kit).
+- **Purpose:** Analytics. זו המטרה ש-Google מצהירה: diagnostics and usage analytics.
+- **Encrypted in transit:** Yes.
+- **Users can request deletion:** No. לנו אין גישה לנתונים, הם אצל Google.
+
+כל השאר לא נחשב איסוף או שיתוף:
+- **מצלמה:** מעובדת במכשיר.
+- **תמונות לדיווח:** נשמרות זמנית במכשיר, ויוצאות ממנו רק כשהמשתמש לוחץ "שתף" ובוחר אפליקציה. גוגל מחריגה העברה שהמשתמש יוזם וציפה לה.
+- **מיקום:** נקרא רק כשהמשתמש לוחץ "שתף" או "SMS", ויוצא מהמכשיר רק דרך האפליקציה שהמשתמש בוחר. אותה החרגה.
+- **מספר רישוי:** נשלח ל-data.gov.il לצורך הבדיקה. זה לא מידע על המשתמש. אם הסוקר יעיר, אפשר להוסיף אותו כ-"Other user-generated content", Collected: No.
+- **היסטוריה:** נשמרת במכשיר בלבד.
 
 ### Government apps
 

@@ -71,10 +71,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # The legal documents are shown in the app and published on the web.
+  assets:
+    - docs/terms.html
+    - docs/privacy-policy.html
+    - docs/accessibility.html
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
