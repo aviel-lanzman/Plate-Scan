@@ -133,6 +133,7 @@ class _SingleScanScreenState extends State<SingleScanScreen>
           services: widget.services,
           plate: plate,
           photos: photos,
+          ownsPhotos: true,
           seenAt: _seenAt,
         ),
       ),

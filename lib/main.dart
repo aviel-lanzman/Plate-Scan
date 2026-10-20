@@ -11,7 +11,8 @@ Future<void> main() async {
   // The camera-to-OCR rotation math assumes a portrait UI.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   final services = AppServices();
-  services.photos.purge();
+  // No screen is open yet, so any photo on disk was left by a killed app.
+  services.photos.deleteAll();
   runApp(PlateScanApp(services: services));
 }
 

@@ -19,6 +19,7 @@ class ResultScreen extends StatefulWidget {
     required this.plate,
     this.initial,
     this.photos = const [],
+    this.ownsPhotos = false,
     this.seenAt,
   });
 
@@ -34,6 +35,10 @@ class ResultScreen extends StatefulWidget {
   /// Photos taken while scanning, to attach to a report.
   final List<String> photos;
 
+  /// Whether to delete [photos] when this screen closes, because no earlier
+  /// screen will.
+  final bool ownsPhotos;
+
   /// When the camera read the plate; null for typed plates and history.
   final DateTime? seenAt;
 
@@ -45,6 +50,15 @@ class _ResultScreenState extends State<ResultScreen> {
   VehicleResult? _result;
   bool _sharing = false;
   late final _photos = [...widget.photos];
+  bool _photosHandedOff = false;
+
+  @override
+  void dispose() {
+    if (widget.ownsPhotos && !_photosHandedOff) {
+      widget.services.photos.delete(_photos);
+    }
+    super.dispose();
+  }
 
   @override
   void initState() {
@@ -124,6 +138,7 @@ class _ResultScreenState extends State<ResultScreen> {
       builder: (_) => _PlateEditDialog(initial: widget.plate),
     );
     if (plate == null || !isValidPlate(plate) || !mounted) return;
+    _photosHandedOff = true;
     await Navigator.pushReplacement(
       context,
       MaterialPageRoute<void>(
@@ -132,10 +147,16 @@ class _ResultScreenState extends State<ResultScreen> {
           plate: plate,
           // Same car, so the photos still apply after a typo fix.
           photos: _photos,
+          ownsPhotos: widget.ownsPhotos,
           seenAt: widget.seenAt,
         ),
       ),
     );
+  }
+
+  void _removePhoto(String path) {
+    setState(() => _photos.remove(path));
+    if (widget.ownsPhotos) widget.services.photos.delete([path]);
   }
 
   Future<void> _viewPhoto(String path) => showDialog<void>(
@@ -212,7 +233,7 @@ class _ResultScreenState extends State<ResultScreen> {
               onCall: _callPolice,
               onShare: _shareReport,
               onViewPhoto: _viewPhoto,
-              onRemovePhoto: (path) => setState(() => _photos.remove(path)),
+              onRemovePhoto: _removePhoto,
             ),
           ],
         ],

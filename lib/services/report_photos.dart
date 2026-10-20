@@ -35,14 +35,15 @@ class CapturedFrame {
 
 /// Saves the frames a plate was read in as JPEG files to attach to a report.
 ///
-/// The files live in the app's temporary directory and are deleted after
-/// [keepFor]; they leave the device only through the share sheet.
+/// The files live in the app's temporary directory. The screen that took
+/// them deletes them when it closes, and [deleteAll] runs at launch for any
+/// left behind when the app was killed. They leave the device only through
+/// the share sheet.
 class ReportPhotos {
   ReportPhotos({Future<Directory> Function()? directory})
     : _directory = directory ?? _defaultDirectory;
 
   static const maxPhotos = 3;
-  static const keepFor = Duration(hours: 24);
 
   final Future<Directory> Function() _directory;
 
@@ -76,24 +77,18 @@ class ReportPhotos {
       try {
         await File(path).delete();
       } on Object {
-        // Already deleted, e.g. by purge().
+        // Already deleted, e.g. by deleteAll().
       }
     }
   }
 
-  /// Deletes photos older than [keepFor].
-  Future<void> purge({DateTime? now}) async {
+  /// Deletes every saved photo. Only safe when no screen is using them.
+  Future<void> deleteAll() async {
     try {
       final dir = await _directory();
-      if (!await dir.exists()) return;
-      final cutoff = (now ?? DateTime.now()).subtract(keepFor);
-      await for (final entity in dir.list()) {
-        if (entity is File && (await entity.lastModified()).isBefore(cutoff)) {
-          await entity.delete();
-        }
-      }
+      if (await dir.exists()) await dir.delete(recursive: true);
     } on Object catch (e) {
-      debugPrint('ReportPhotos: purge failed: $e');
+      debugPrint('ReportPhotos: could not delete photos: $e');
     }
   }
 

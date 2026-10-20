@@ -123,15 +123,15 @@ void main() {
       expect(await photos.save('1234567', const []), isEmpty);
     });
 
-    test('purge deletes only photos older than a day', () async {
-      final old = File('${dir.path}/old.jpg')..writeAsBytesSync([1]);
-      final fresh = File('${dir.path}/fresh.jpg')..writeAsBytesSync([1]);
-      old.setLastModifiedSync(
-        DateTime.now().subtract(const Duration(hours: 25)),
-      );
-      await photos.purge();
-      expect(old.existsSync(), isFalse);
-      expect(fresh.existsSync(), isTrue);
+    test('deleteAll removes every photo', () async {
+      await photos.save('1234567', [_nv21(32, 16, y: 0, u: 128, v: 128)]);
+      await photos.deleteAll();
+      expect(dir.existsSync(), isFalse);
+      // Saving again recreates the directory.
+      final paths = await photos.save('1234567', [
+        _nv21(32, 16, y: 0, u: 128, v: 128),
+      ]);
+      expect(File(paths.single).existsSync(), isTrue);
     });
   });
 }
