@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
@@ -7,10 +9,12 @@ import '../app_services.dart';
 import '../services/plate_camera.dart';
 import '../services/plate_parser.dart';
 import '../widgets/camera_view.dart';
+import '../widgets/plate_badge.dart';
 import 'result_screen.dart';
 
 /// Point-and-shoot: scans until one plate is confirmed, then lets the user
-/// correct it before checking.
+/// correct it before checking. While scanning, the user can also accept or
+/// reject the current best reading instead of waiting for confirmation.
 class SingleScanScreen extends StatefulWidget {
   const SingleScanScreen({super.key, required this.services});
 
@@ -30,6 +34,7 @@ class _SingleScanScreenState extends State<SingleScanScreen>
   Future<List<String>>? _photos;
   bool _photosHandedOff = false;
   String? _reading;
+  final _rejected = <String>{};
   String? _error;
 
   @override
@@ -79,26 +84,60 @@ class _SingleScanScreenState extends State<SingleScanScreen>
 
   void _onCandidates(List<String> candidates) {
     if (!mounted || _confirmed != null) return;
-    final confirmed = _voter.add(candidates);
+    final confirmed = _voter.add(
+      candidates.where((p) => !_rejected.contains(p)),
+    );
     if (confirmed.isEmpty) {
-      setState(() => _reading = candidates.firstOrNull ?? _reading);
+      // Keep showing the last reading after the plate leaves the frame, so
+      // the user can still accept it.
+      final leader = _voter.leader;
+      if (leader != null && leader != _reading) {
+        if (_reading == null) {
+          _announce(
+            'זוהה מספר אפשרי ${_spoken(leader)}. אשר אותו או המשך לכוון.',
+          );
+        }
+        setState(() => _reading = leader);
+      }
       return;
     }
     HapticFeedback.mediumImpact();
     final plate = confirmed.first;
-    SemanticsService.sendAnnouncement(
-      View.of(context),
-      'זוהה מספר ${plate.split('').join(' ')}. ודא שהוא נכון ולחץ בדוק.',
-      TextDirection.rtl,
-    );
+    _announce('זוהה מספר ${_spoken(plate)}. ודא שהוא נכון ולחץ בדוק.');
+    _freeze(plate);
+    setState(() => _plateController.text = plate);
+  }
+
+  String _spoken(String plate) => plate.split('').join(' ');
+
+  void _announce(String message) => SemanticsService.sendAnnouncement(
+    View.of(context),
+    message,
+    TextDirection.rtl,
+  );
+
+  /// Stops scanning on [plate] and saves the frames it was read in.
+  void _freeze(String plate) {
     // Grab the frames before stop() releases them.
     _photos = widget.services.photos.save(plate, _camera.framesWith(plate));
     _seenAt = DateTime.now();
-    setState(() {
-      _confirmed = plate;
-      _plateController.text = plate;
-    });
+    setState(() => _confirmed = plate);
     _camera.stop();
+  }
+
+  /// The user says the reading is right: check it straight away.
+  void _acceptReading(String plate) {
+    HapticFeedback.mediumImpact();
+    _freeze(plate);
+    _plateController.text = plate;
+    _check();
+  }
+
+  /// The user says [plate] is a misread: ignore it until they leave.
+  void _reject(String plate) {
+    _rejected.add(plate);
+    _voter.reset();
+    setState(() => _reading = null);
   }
 
   void _discardPhotos() {
@@ -106,7 +145,9 @@ class _SingleScanScreenState extends State<SingleScanScreen>
     _photos = null;
   }
 
+  /// The confirmed number is wrong: ignore it and scan again.
   void _rescan() {
+    if (_confirmed case final plate?) _rejected.add(plate);
     _discardPhotos();
     _voter.reset();
     setState(() {
@@ -143,6 +184,7 @@ class _SingleScanScreenState extends State<SingleScanScreen>
   @override
   Widget build(BuildContext context) {
     final reading = _reading;
+    final confirmed = _confirmed;
     return Scaffold(
       appBar: AppBar(title: const Text('כוון וצלם')),
       body: Stack(
@@ -155,21 +197,21 @@ class _SingleScanScreenState extends State<SingleScanScreen>
                 child: Text(error, textAlign: TextAlign.center),
               ),
             )
+          else if (confirmed != null)
+            // The camera is off: show the frame the plate was read in, so
+            // the number can be compared with it.
+            _FrozenFrame(_photos)
           else ...[
             CameraView(_camera.controller),
             const PlateFrame(),
-            Positioned(
+            const Positioned(
               top: 16,
               left: 16,
               right: 16,
-              child: _Hint(
-                reading == null
-                    ? 'כוון את המצלמה ללוחית הרישוי'
-                    : 'מזהה: ${formatPlate(reading)}',
-              ),
+              child: _Hint('כוון את המצלמה ללוחית הרישוי'),
             ),
           ],
-          if (_confirmed != null)
+          if (confirmed != null)
             Align(
               alignment: Alignment.bottomCenter,
               child: _ConfirmCard(
@@ -177,8 +219,98 @@ class _SingleScanScreenState extends State<SingleScanScreen>
                 onCheck: _check,
                 onRescan: _rescan,
               ),
+            )
+          else if (reading != null && _error == null)
+            Align(
+              alignment: Alignment.bottomCenter,
+              child: _ReadingCard(
+                reading,
+                onAccept: () => _acceptReading(reading),
+                onReject: () => _reject(reading),
+              ),
             ),
         ],
+      ),
+    );
+  }
+}
+
+class _FrozenFrame extends StatelessWidget {
+  const _FrozenFrame(this.photos);
+
+  final Future<List<String>>? photos;
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      color: Colors.black,
+      child: FutureBuilder<List<String>>(
+        future: photos,
+        builder: (context, snapshot) {
+          final path = snapshot.data?.lastOrNull;
+          if (path == null) return const SizedBox.expand();
+          return Image.file(
+            File(path),
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            semanticLabel: 'התמונה שבה זוהה המספר',
+          );
+        },
+      ),
+    );
+  }
+}
+
+/// The best reading so far, before it is confirmed.
+class _ReadingCard extends StatelessWidget {
+  const _ReadingCard(
+    this.plate, {
+    required this.onAccept,
+    required this.onReject,
+  });
+
+  final String plate;
+  final VoidCallback onAccept;
+  final VoidCallback onReject;
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: Card(
+        margin: const EdgeInsets.all(16),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('מזהה מספר. האם זה המספר שעל הרכב?'),
+              const SizedBox(height: 8),
+              Center(child: PlateBadge(plate, fontSize: 28)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: onAccept,
+                      icon: const Icon(Icons.check),
+                      label: const Text('זה המספר'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: onReject,
+                      icon: const Icon(Icons.close),
+                      label: const Text('לא המספר'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -255,7 +387,7 @@ class _ConfirmCard extends StatelessWidget {
               TextButton.icon(
                 onPressed: onRescan,
                 icon: const Icon(Icons.refresh),
-                label: const Text('סרוק שוב'),
+                label: const Text('זה לא המספר, סרוק שוב'),
               ),
             ],
           ),

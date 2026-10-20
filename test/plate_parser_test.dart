@@ -91,7 +91,23 @@ void main() {
     test('reset clears history', () {
       final voter = PlateVoter(window: 6, threshold: 2)..add(['1234567']);
       voter.reset();
+      expect(voter.leader, isNull);
       expect(voter.add(['1234567']), isEmpty);
+    });
+
+    test('leader is the most-read plate, the latest on a tie', () {
+      final voter = PlateVoter(window: 3, threshold: 3);
+      expect(voter.leader, isNull);
+      voter.add(['1234567']);
+      voter.add(['1234561']);
+      expect(voter.leader, '1234561');
+      voter.add(['1234567']);
+      expect(voter.leader, '1234567');
+      voter.add([]);
+      voter.add([]);
+      expect(voter.leader, '1234567');
+      voter.add([]);
+      expect(voter.leader, isNull);
     });
   });
 }

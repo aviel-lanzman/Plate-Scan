@@ -105,6 +105,11 @@ class PlateVoter {
   final int window;
   final int threshold;
   final _frames = Queue<Set<String>>();
+  String? _leader;
+
+  /// The plate read most often in the window (the most recent one on a
+  /// tie), even if not confirmed yet; null when the window has none.
+  String? get leader => _leader;
 
   /// Records one frame's candidates and returns the plates now confirmed,
   /// most-seen first.
@@ -113,15 +118,28 @@ class PlateVoter {
     if (_frames.length > window) _frames.removeFirst();
 
     final counts = <String, int>{};
-    for (final frame in _frames) {
+    final lastSeen = <String, int>{};
+    for (final (i, frame) in _frames.indexed) {
       for (final plate in frame) {
         counts[plate] = (counts[plate] ?? 0) + 1;
+        lastSeen[plate] = i;
       }
     }
-    final confirmed = counts.entries.where((e) => e.value >= threshold).toList()
-      ..sort((a, b) => b.value.compareTo(a.value));
-    return [for (final e in confirmed) e.key];
+    final ranked = counts.entries.toList()
+      ..sort(
+        (a, b) => b.value != a.value
+            ? b.value.compareTo(a.value)
+            : lastSeen[b.key]!.compareTo(lastSeen[a.key]!),
+      );
+    _leader = ranked.firstOrNull?.key;
+    return [
+      for (final e in ranked)
+        if (e.value >= threshold) e.key,
+    ];
   }
 
-  void reset() => _frames.clear();
+  void reset() {
+    _frames.clear();
+    _leader = null;
+  }
 }
