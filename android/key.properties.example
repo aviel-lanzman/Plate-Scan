@@ -1,0 +1,5 @@
+# Copy to android/key.properties (ignored by git) and fill in your own values.
+storeFile=/home/aviel/keys/platescan-upload.jks
+storePassword=CHANGE_ME
+keyAlias=upload
+keyPassword=CHANGE_ME
