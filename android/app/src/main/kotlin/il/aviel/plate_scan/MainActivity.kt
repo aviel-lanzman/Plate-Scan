@@ -10,7 +10,9 @@ class MainActivity : FlutterActivity() {
     private var tones: ToneGenerator? = null
 
     // Flutter's SystemSound.alert only plays on desktop, so the continuous
-    // scan alert beeps through this channel instead.
+    // scan alert beeps through this channel instead. It uses the media
+    // stream: the notification stream is muted in silent and Do Not Disturb
+    // modes, while the user is watching the alert on screen.
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "plate_scan/alert")
@@ -18,7 +20,7 @@ class MainActivity : FlutterActivity() {
                 if (call.method != "beep") return@setMethodCallHandler result.notImplemented()
                 try {
                     val generator = tones
-                        ?: ToneGenerator(AudioManager.STREAM_NOTIFICATION, 100).also { tones = it }
+                        ?: ToneGenerator(AudioManager.STREAM_MUSIC, 100).also { tones = it }
                     generator.startTone(ToneGenerator.TONE_PROP_BEEP2, 400)
                     result.success(true)
                 } catch (e: RuntimeException) {
