@@ -148,9 +148,9 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
   void _onResult(_Detection detection, VehicleResult result) {
     if (!mounted) return;
     setState(() => detection.result = result);
-    if (result.status != PlateStatus.error) {
-      widget.services.history.add(result);
-    }
+    // History keeps alerts and plates the user opens, not a log of every
+    // passing car.
+    if (result.status.isAlert) widget.services.history.add(result);
     if (result.status.isAlert) _raiseAlert(detection);
   }
 
@@ -192,6 +192,10 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
     await _camera.stop();
     final photos = await detection.photos;
     if (!mounted) return;
+    final result = detection.result;
+    if (result != null && result.status != PlateStatus.error) {
+      widget.services.history.add(result);
+    }
     await Navigator.push(
       context,
       MaterialPageRoute<void>(

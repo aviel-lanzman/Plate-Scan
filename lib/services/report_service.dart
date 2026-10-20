@@ -83,7 +83,7 @@ class ReportService {
   }) {
     final info = result.info;
     final lines = <String>[
-      'דיווח על רכב חשוד',
+      'פרטי רכב לבדיקת המשטרה',
       'מספר רישוי: ${formatPlate(result.plate)}',
       'סטטוס במשרד התחבורה: ${result.status.label}'
           '${result.status == PlateStatus.offRoad && info?.cancelledOn != null ? ' (ביטול סופי מתאריך ${formatIsoDate(info!.cancelledOn!)})' : ''}',
@@ -97,7 +97,8 @@ class ReportService {
       'זמן הדיווח: ${formatDateTime(at ?? DateTime.now())}',
       if (photoCount == 1) 'מצורפת תמונה מהסריקה',
       if (photoCount > 1) 'מצורפות $photoCount תמונות מהסריקה',
-      'מקור: מאגרי משרד התחבורה ב-data.gov.il',
+      'מקור: משרד התחבורה והבטיחות בדרכים, data.gov.il. '
+          'הפרטים נמסרים לבדיקה ואינם קובעים שבוצעה עבירה.',
     ];
     return lines.join('\n');
   }

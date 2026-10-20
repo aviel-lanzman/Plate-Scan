@@ -265,6 +265,13 @@ class _ResultScreenState extends State<ResultScreen> {
               onViewPhoto: _viewPhoto,
               onRemovePhoto: _removePhoto,
             ),
+            const SizedBox(height: 8),
+            // The data.gov.il licence requires naming the source.
+            Text(
+              'מקור המידע: משרד התחבורה והבטיחות בדרכים, באתר data.gov.il, '
+              'כפי שהוא מתפרסם שם. אינו מהווה אישור רשמי.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
           ],
         ],
       ),
