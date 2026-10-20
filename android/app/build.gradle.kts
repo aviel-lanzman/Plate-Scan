@@ -16,7 +16,7 @@ val keystoreProperties = Properties().apply {
 }
 
 android {
-    namespace = "il.aviel.plate_scan"
+    namespace = "com.aviel.lanzman.platescan"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -27,7 +27,7 @@ android {
 
     defaultConfig {
         // Permanent once the app is uploaded to Google Play.
-        applicationId = "il.aviel.plate_scan"
+        applicationId = "com.aviel.lanzman.platescan"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

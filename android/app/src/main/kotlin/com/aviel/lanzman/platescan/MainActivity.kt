@@ -1,4 +1,4 @@
-package il.aviel.plate_scan
+package com.aviel.lanzman.platescan
 
 import android.media.AudioManager
 import android.media.ToneGenerator
