@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -16,6 +18,8 @@ class ResultScreen extends StatefulWidget {
     required this.services,
     required this.plate,
     this.initial,
+    this.photos = const [],
+    this.seenAt,
   });
 
   final AppServices services;
@@ -27,6 +31,12 @@ class ResultScreen extends StatefulWidget {
   /// looking the plate up again.
   final VehicleResult? initial;
 
+  /// Photos taken while scanning, to attach to a report.
+  final List<String> photos;
+
+  /// When the camera read the plate; null for typed plates and history.
+  final DateTime? seenAt;
+
   @override
   State<ResultScreen> createState() => _ResultScreenState();
 }
@@ -34,6 +44,7 @@ class ResultScreen extends StatefulWidget {
 class _ResultScreenState extends State<ResultScreen> {
   VehicleResult? _result;
   bool _sharing = false;
+  late final _photos = [...widget.photos];
 
   @override
   void initState() {
@@ -88,13 +99,20 @@ class _ResultScreenState extends State<ResultScreen> {
     setState(() => _sharing = true);
     try {
       final position = await widget.services.report.currentPosition();
+      // Temporary photos may have been purged since they were taken.
+      final photos = [
+        for (final path in _photos)
+          if (await File(path).exists()) path,
+      ];
       final text = ReportService.buildReport(
         result,
         latitude: position?.latitude,
         longitude: position?.longitude,
         accuracyMeters: position?.accuracy,
+        seenAt: widget.seenAt,
+        photoCount: photos.length,
       );
-      await widget.services.report.share(text);
+      await widget.services.report.share(text, photos: photos);
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
@@ -109,10 +127,41 @@ class _ResultScreenState extends State<ResultScreen> {
     await Navigator.pushReplacement(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => ResultScreen(services: widget.services, plate: plate),
+        builder: (_) => ResultScreen(
+          services: widget.services,
+          plate: plate,
+          // Same car, so the photos still apply after a typo fix.
+          photos: _photos,
+          seenAt: widget.seenAt,
+        ),
       ),
     );
   }
+
+  Future<void> _viewPhoto(String path) => showDialog<void>(
+    context: context,
+    builder: (context) => Dialog.fullscreen(
+      backgroundColor: Colors.black,
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              maxScale: 6,
+              child: Image.file(File(path), fit: BoxFit.contain),
+            ),
+          ),
+          SafeArea(
+            child: IconButton(
+              tooltip: 'סגור',
+              color: Colors.white,
+              icon: const Icon(Icons.close),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -159,8 +208,11 @@ class _ResultScreenState extends State<ResultScreen> {
             _ReportCard(
               urgent: result.needsReport,
               sharing: _sharing,
+              photos: _photos,
               onCall: _callPolice,
               onShare: _shareReport,
+              onViewPhoto: _viewPhoto,
+              onRemovePhoto: (path) => setState(() => _photos.remove(path)),
             ),
           ],
         ],
@@ -311,14 +363,26 @@ class _ReportCard extends StatelessWidget {
   const _ReportCard({
     required this.urgent,
     required this.sharing,
+    required this.photos,
     required this.onCall,
     required this.onShare,
+    required this.onViewPhoto,
+    required this.onRemovePhoto,
   });
 
   final bool urgent;
   final bool sharing;
+  final List<String> photos;
   final VoidCallback onCall;
   final VoidCallback onShare;
+  final ValueChanged<String> onViewPhoto;
+  final ValueChanged<String> onRemovePhoto;
+
+  String get _shareLabel => switch (photos.length) {
+    0 => 'שתף פרטי דיווח (כולל מיקום)',
+    1 => 'שתף דיווח עם מיקום ותמונה',
+    final n => 'שתף דיווח עם מיקום ו-$n תמונות',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -352,6 +416,27 @@ class _ReportCard extends StatelessWidget {
               icon: const Icon(Icons.phone),
               label: const Text('התקשר 100'),
             ),
+            if (photos.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'תמונות מהסריקה',
+                style: Theme.of(context).textTheme.titleSmall,
+              ),
+              const SizedBox(height: 4),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final (i, path) in photos.indexed)
+                    _PhotoThumb(
+                      path,
+                      index: i + 1,
+                      onTap: () => onViewPhoto(path),
+                      onRemove: () => onRemovePhoto(path),
+                    ),
+                ],
+              ),
+            ],
             const SizedBox(height: 8),
             OutlinedButton.icon(
               onPressed: sharing ? null : onShare,
@@ -361,10 +446,77 @@ class _ReportCard extends StatelessWidget {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.share),
-              label: const Text('שתף פרטי דיווח (כולל מיקום)'),
+              label: Text(_shareLabel),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              photos.isEmpty
+                  ? 'שתף רק עם המשטרה. אין לפרסם פרטי רכבים ברשתות החברתיות.'
+                  : 'שתף רק עם המשטרה. אין לפרסם תמונות של רכבים או של אנשים ברשתות החברתיות. '
+                        'טקסט הדיווח מועתק גם ללוח, למקרה שהאפליקציה שתבחר לא תצרף אותו לתמונות.',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PhotoThumb extends StatelessWidget {
+  const _PhotoThumb(
+    this.path, {
+    required this.index,
+    required this.onTap,
+    required this.onRemove,
+  });
+
+  final String path;
+  final int index;
+  final VoidCallback onTap;
+  final VoidCallback onRemove;
+
+  static const _size = 96.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final pixels = (_size * MediaQuery.devicePixelRatioOf(context)).round();
+    return SizedBox.square(
+      dimension: _size,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          Semantics(
+            button: true,
+            label: 'תמונה $index, הקש להגדלה',
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: InkWell(
+                onTap: onTap,
+                child: Image.file(
+                  File(path),
+                  fit: BoxFit.cover,
+                  cacheWidth: pixels,
+                  errorBuilder: (_, _, _) => const ColoredBox(
+                    color: Colors.black12,
+                    child: Icon(Icons.broken_image),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          PositionedDirectional(
+            top: 0,
+            end: 0,
+            child: IconButton.filledTonal(
+              tooltip: 'הסר תמונה $index מהדיווח',
+              visualDensity: VisualDensity.compact,
+              iconSize: 18,
+              icon: const Icon(Icons.close),
+              onPressed: onRemove,
+            ),
+          ),
+        ],
       ),
     );
   }

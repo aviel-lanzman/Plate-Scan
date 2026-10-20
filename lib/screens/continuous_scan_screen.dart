@@ -17,10 +17,13 @@ import '../widgets/status_style.dart';
 import 'result_screen.dart';
 
 class _Detection {
-  _Detection(this.plate, this.seenAt);
+  _Detection(this.plate, this.seenAt, this.photos);
 
   final String plate;
   final DateTime seenAt;
+
+  /// Paths of the saved frames this plate was read in.
+  final Future<List<String>> photos;
   VehicleResult? result;
 }
 
@@ -66,6 +69,9 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
     WakelockPlus.disable();
     _alertTimer?.cancel();
     _camera.dispose();
+    for (final detection in _detections) {
+      _discardPhotos(detection);
+    }
     super.dispose();
   }
 
@@ -105,15 +111,24 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
       final last = _lastQueued[plate];
       if (last != null && now.difference(last) < _recheckAfter) continue;
       _lastQueued[plate] = now;
-      final detection = _Detection(plate, now);
+      final detection = _Detection(
+        plate,
+        now,
+        widget.services.photos.save(plate, _camera.framesWith(plate)),
+      );
       setState(() {
         _detections.insert(0, detection);
-        if (_detections.length > _maxDetections) _detections.removeLast();
+        if (_detections.length > _maxDetections) {
+          _discardPhotos(_detections.removeLast());
+        }
       });
       _pending.add(detection);
     }
     _pump();
   }
+
+  void _discardPhotos(_Detection detection) =>
+      detection.photos.then(widget.services.photos.delete);
 
   void _pump() {
     while (_inFlight < _maxInFlight && _pending.isNotEmpty) {
@@ -152,8 +167,10 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
   }
 
   Future<void> _open(_Detection detection) async {
+    if (_paused) return;
     _paused = true;
     await _camera.stop();
+    final photos = await detection.photos;
     if (!mounted) return;
     await Navigator.push(
       context,
@@ -165,6 +182,8 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
           initial: detection.result?.status == PlateStatus.error
               ? null
               : detection.result,
+          photos: photos,
+          seenAt: detection.seenAt,
         ),
       ),
     );

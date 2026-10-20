@@ -10,7 +10,9 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The camera-to-OCR rotation math assumes a portrait UI.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-  runApp(PlateScanApp(services: AppServices()));
+  final services = AppServices();
+  services.photos.purge();
+  runApp(PlateScanApp(services: services));
 }
 
 class PlateScanApp extends StatelessWidget {

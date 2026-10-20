@@ -42,6 +42,18 @@ void main() {
       expect(text, contains('20/10/2026 09:05'));
     });
 
+    test('includes when the car was seen and the attached photos', () {
+      final text = ReportService.buildReport(
+        _result('7735636', status: PlateStatus.offRoad),
+        seenAt: DateTime(2026, 10, 20, 9, 1),
+        photoCount: 3,
+        at: DateTime(2026, 10, 20, 9, 5),
+      );
+      expect(text, contains('הרכב נצפה: 20/10/2026 09:01'));
+      expect(text, contains('זמן הדיווח: 20/10/2026 09:05'));
+      expect(text, contains('מצורפות 3 תמונות מהסריקה'));
+    });
+
     test('omits location when unavailable', () {
       final text = ReportService.buildReport(
         _result('1234567'),

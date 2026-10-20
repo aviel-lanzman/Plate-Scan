@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:io';
 
 import 'package:camera/camera.dart';
@@ -6,14 +7,18 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
 import 'plate_parser.dart';
+import 'report_photos.dart';
 
 /// Streams frames from the back camera through on-device ML Kit OCR and
-/// reports plate candidates found in each processed frame.
+/// reports plate candidates found in each processed frame. The last few
+/// frames with a plate in them are kept for report photos.
 class PlateCamera {
   PlateCamera({this.frameInterval = const Duration(milliseconds: 300)});
 
   final Duration frameInterval;
   final _recognizer = TextRecognizer(script: TextRecognitionScript.latin);
+  static const _keptFrames = 8;
+  final _recent = Queue<CapturedFrame>();
 
   CameraController? _controller;
   CameraDescription? _camera;
@@ -24,6 +29,12 @@ class PlateCamera {
   CameraController? get controller => _controller;
 
   bool get isRunning => _controller?.value.isInitialized ?? false;
+
+  /// Recent frames in which [plate] was read, oldest first.
+  List<CapturedFrame> framesWith(String plate) => [
+    for (final frame in _recent)
+      if (frame.plates.contains(plate)) frame,
+  ];
 
   /// Throws [CameraException] (e.g. code `CameraAccessDenied`) on failure.
   Future<void> start(ValueChanged<List<String>> onCandidates) async {
@@ -57,6 +68,7 @@ class PlateCamera {
   Future<void> stop() async {
     final controller = _controller;
     _controller = null;
+    _recent.clear();
     if (controller == null) return;
     if (controller.value.isStreamingImages) {
       await controller.stopImageStream();
@@ -86,14 +98,19 @@ class PlateCamera {
     _busy = true;
     _lastFrame = now;
     try {
-      final input = _toInputImage(image);
+      final rotation = _rotation();
+      if (rotation == null) return;
+      final input = _toInputImage(image, rotation);
       if (input == null) return;
       final text = await _recognizer.processImage(input);
       final lines = [
         for (final block in text.blocks)
           for (final line in block.lines) line.text,
       ];
-      if (_controller != null) _onCandidates?.call(PlateParser.extract(lines));
+      final plates = PlateParser.extract(lines);
+      if (_controller == null) return;
+      if (plates.isNotEmpty) _keep(image, rotation, plates);
+      _onCandidates?.call(plates);
     } on Object catch (e) {
       debugPrint('PlateCamera: frame failed: $e');
     } finally {
@@ -108,26 +125,46 @@ class PlateCamera {
     DeviceOrientation.landscapeRight: 270,
   };
 
-  // Follows the conversion from the google_mlkit_commons documentation.
-  InputImage? _toInputImage(CameraImage image) {
+  void _keep(
+    CameraImage image,
+    InputImageRotation rotation,
+    List<String> plates,
+  ) {
+    final plane = image.planes.first;
+    _recent.addLast(
+      CapturedFrame(
+        bytes: plane.bytes,
+        width: image.width,
+        height: image.height,
+        bytesPerRow: plane.bytesPerRow,
+        format: Platform.isAndroid ? FrameFormat.nv21 : FrameFormat.bgra8888,
+        rotation: rotation.rawValue,
+        plates: plates,
+      ),
+    );
+    if (_recent.length > _keptFrames) _recent.removeFirst();
+  }
+
+  // The rotation and conversion follow the google_mlkit_commons documentation.
+  InputImageRotation? _rotation() {
     final camera = _camera;
     final controller = _controller;
     if (camera == null || controller == null) return null;
 
     final sensorOrientation = camera.sensorOrientation;
-    InputImageRotation? rotation;
     if (Platform.isIOS) {
-      rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
-    } else {
-      var compensation = _orientations[controller.value.deviceOrientation];
-      if (compensation == null) return null;
-      compensation = camera.lensDirection == CameraLensDirection.front
-          ? (sensorOrientation + compensation) % 360
-          : (sensorOrientation - compensation + 360) % 360;
-      rotation = InputImageRotationValue.fromRawValue(compensation);
+      return InputImageRotationValue.fromRawValue(sensorOrientation);
     }
-    if (rotation == null) return null;
+    final compensation = _orientations[controller.value.deviceOrientation];
+    if (compensation == null) return null;
+    return InputImageRotationValue.fromRawValue(
+      camera.lensDirection == CameraLensDirection.front
+          ? (sensorOrientation + compensation) % 360
+          : (sensorOrientation - compensation + 360) % 360,
+    );
+  }
 
+  InputImage? _toInputImage(CameraImage image, InputImageRotation rotation) {
     final format = InputImageFormatValue.fromRawValue(image.format.raw as int);
     if (format == null ||
         (Platform.isAndroid && format != InputImageFormat.nv21) ||

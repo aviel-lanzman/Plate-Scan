@@ -25,6 +25,9 @@ class _SingleScanScreenState extends State<SingleScanScreen>
   final _voter = PlateVoter();
   final _plateController = TextEditingController();
   String? _confirmed;
+  DateTime? _seenAt;
+  Future<List<String>>? _photos;
+  bool _photosHandedOff = false;
   String? _reading;
   String? _error;
 
@@ -40,6 +43,7 @@ class _SingleScanScreenState extends State<SingleScanScreen>
     WidgetsBinding.instance.removeObserver(this);
     _camera.dispose();
     _plateController.dispose();
+    if (!_photosHandedOff) _discardPhotos();
     super.dispose();
   }
 
@@ -80,14 +84,24 @@ class _SingleScanScreenState extends State<SingleScanScreen>
       return;
     }
     HapticFeedback.mediumImpact();
+    final plate = confirmed.first;
+    // Grab the frames before stop() releases them.
+    _photos = widget.services.photos.save(plate, _camera.framesWith(plate));
+    _seenAt = DateTime.now();
     setState(() {
-      _confirmed = confirmed.first;
-      _plateController.text = confirmed.first;
+      _confirmed = plate;
+      _plateController.text = plate;
     });
     _camera.stop();
   }
 
+  void _discardPhotos() {
+    _photos?.then(widget.services.photos.delete);
+    _photos = null;
+  }
+
   void _rescan() {
+    _discardPhotos();
     _voter.reset();
     setState(() {
       _confirmed = null;
@@ -96,13 +110,25 @@ class _SingleScanScreenState extends State<SingleScanScreen>
     _start();
   }
 
-  void _check() {
+  Future<void> _check() async {
     final plate = normalizePlate(_plateController.text);
-    if (!isValidPlate(plate)) return;
+    if (!isValidPlate(plate) || _photosHandedOff) return;
+    _photosHandedOff = true;
+    // Encoding normally finishes while the user confirms the number.
+    final photos = await _photos ?? const <String>[];
+    if (!mounted) {
+      widget.services.photos.delete(photos);
+      return;
+    }
     Navigator.pushReplacement(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => ResultScreen(services: widget.services, plate: plate),
+        builder: (_) => ResultScreen(
+          services: widget.services,
+          plate: plate,
+          photos: photos,
+          seenAt: _seenAt,
+        ),
       ),
     );
   }
