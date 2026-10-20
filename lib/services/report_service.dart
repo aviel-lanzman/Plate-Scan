@@ -7,13 +7,31 @@ import '../models/vehicle_result.dart';
 import '../util/format.dart';
 import 'plate_parser.dart';
 
-/// Reporting is always user-initiated: there is no public API for filing a
-/// police report, so the app dials 100 or hands a prepared text, and the
-/// photos taken while scanning, to the share sheet.
+/// Reporting is always user-initiated: the police have no public API and no
+/// WhatsApp line for reports, so the app dials 100, opens an SMS to the line
+/// for deaf and speech-impaired people, or hands a prepared text and the
+/// photos taken while scanning to the share sheet.
 class ReportService {
   static final policeNumber = Uri(scheme: 'tel', path: '100');
 
+  /// The police SMS line, for people with hearing or speech disabilities
+  /// only (listed on gov.il under the 110 information centre).
+  static const deafSmsNumber = '0522020100';
+
+  /// Online complaint form; not for emergencies.
+  static final onlineComplaint = Uri.parse(
+    'https://www.gov.il/he/service/request-file-complaint-online-during-emergency',
+  );
+
   Future<bool> callPolice() => launchUrl(policeNumber);
+
+  // Uri(queryParameters:) encodes spaces as '+', which SMS apps show as is.
+  Future<bool> smsPolice(String text) => launchUrl(
+    Uri.parse('sms:$deafSmsNumber?body=${Uri.encodeComponent(text)}'),
+  );
+
+  Future<bool> openOnlineComplaint() =>
+      launchUrl(onlineComplaint, mode: LaunchMode.externalApplication);
 
   /// Best-effort location; null if unavailable or denied.
   Future<Position?> currentPosition() async {

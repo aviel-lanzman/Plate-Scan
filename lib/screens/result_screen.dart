@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../app_services.dart';
 import '../models/vehicle_result.dart';
@@ -107,30 +108,57 @@ class _ResultScreenState extends State<ResultScreen> {
     }
   }
 
-  Future<void> _shareReport() async {
+  /// Builds the report with the current location, then hands it to [send].
+  Future<void> _report(
+    Future<void> Function(VehicleResult result, Position? position) send,
+  ) async {
     final result = _result;
-    if (result == null) return;
+    if (result == null || _sharing) return;
     setState(() => _sharing = true);
     try {
-      final position = await widget.services.report.currentPosition();
-      // Temporary photos may have been purged since they were taken.
-      final photos = [
-        for (final path in _photos)
-          if (await File(path).exists()) path,
-      ];
-      final text = ReportService.buildReport(
-        result,
-        latitude: position?.latitude,
-        longitude: position?.longitude,
-        accuracyMeters: position?.accuracy,
-        seenAt: widget.seenAt,
-        photoCount: photos.length,
-      );
-      await widget.services.report.share(text, photos: photos);
+      await send(result, await widget.services.report.currentPosition());
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
   }
+
+  Future<void> _shareReport() => _report((result, position) async {
+    // The OS may have cleared temporary files since the photos were taken.
+    final photos = [
+      for (final path in _photos)
+        if (await File(path).exists()) path,
+    ];
+    final text = ReportService.buildReport(
+      result,
+      latitude: position?.latitude,
+      longitude: position?.longitude,
+      accuracyMeters: position?.accuracy,
+      seenAt: widget.seenAt,
+      photoCount: photos.length,
+    );
+    await widget.services.report.share(text, photos: photos);
+  });
+
+  // SMS cannot carry the photos.
+  Future<void> _smsPolice() => _report((result, position) async {
+    final text = ReportService.buildReport(
+      result,
+      latitude: position?.latitude,
+      longitude: position?.longitude,
+      accuracyMeters: position?.accuracy,
+      seenAt: widget.seenAt,
+    );
+    final ok = await widget.services.report.smsPolice(text);
+    if (!ok && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'לא ניתן לפתוח את אפליקציית ההודעות. שלח SMS ל-052-2020100.',
+          ),
+        ),
+      );
+    }
+  });
 
   Future<void> _editPlate() async {
     final plate = await showDialog<String>(
@@ -232,6 +260,8 @@ class _ResultScreenState extends State<ResultScreen> {
               photos: _photos,
               onCall: _callPolice,
               onShare: _shareReport,
+              onSms: _smsPolice,
+              onComplaint: widget.services.report.openOnlineComplaint,
               onViewPhoto: _viewPhoto,
               onRemovePhoto: _removePhoto,
             ),
@@ -391,6 +421,8 @@ class _ReportCard extends StatelessWidget {
     required this.photos,
     required this.onCall,
     required this.onShare,
+    required this.onSms,
+    required this.onComplaint,
     required this.onViewPhoto,
     required this.onRemovePhoto,
   });
@@ -400,6 +432,8 @@ class _ReportCard extends StatelessWidget {
   final List<String> photos;
   final VoidCallback onCall;
   final VoidCallback onShare;
+  final VoidCallback onSms;
+  final VoidCallback onComplaint;
   final ValueChanged<String> onViewPhoto;
   final ValueChanged<String> onRemovePhoto;
 
@@ -431,7 +465,7 @@ class _ReportCard extends StatelessWidget {
             const SizedBox(height: 4),
             Text(
               urgent
-                  ? 'אם הרכב בתנועה או חונה לידך, דווח למוקד 100 ומסור את המספר והמיקום. אל תתעמת עם הנהג.'
+                  ? 'אם הרכב לפניך עכשיו, חייג 100 ומסור את המספר, המיקום, כיוון הנסיעה ותיאור הרכב. אל תתעמת עם הנהג ואל תרדוף אחריו.'
                   : 'אם יש לך חשד לגבי הרכב, אפשר לדווח למוקד 100.',
             ),
             const SizedBox(height: 12),
@@ -475,11 +509,22 @@ class _ReportCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              photos.isEmpty
-                  ? 'שתף רק עם המשטרה. אין לפרסם פרטי רכבים ברשתות החברתיות.'
-                  : 'שתף רק עם המשטרה. אין לפרסם תמונות של רכבים או של אנשים ברשתות החברתיות. '
-                        'טקסט הדיווח מועתק גם ללוח, למקרה שהאפליקציה שתבחר לא תצרף אותו לתמונות.',
+              'למשטרה אין קו וואטסאפ לדיווחים. שמור או שלח לעצמך את הדיווח'
+              '${photos.isEmpty ? '' : ' והתמונות'}, כדי למסור אותם אם המשטרה תבקש, '
+              'או לצרף אותם לתלונה מקוונת. אל תפרסם אותם ברשתות החברתיות.'
+              '${photos.isEmpty ? '' : ' טקסט הדיווח מועתק גם ללוח, למקרה שהאפליקציה שתבחר לא תצרף אותו לתמונות.'}',
               style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: onComplaint,
+              icon: const Icon(Icons.open_in_new),
+              label: const Text('תלונה מקוונת באתר המשטרה (לא לחירום)'),
+            ),
+            TextButton.icon(
+              onPressed: sharing ? null : onSms,
+              icon: const Icon(Icons.sms_outlined),
+              label: const Text('SMS למשטרה, לבעלי מוגבלות שמיעה או דיבור'),
             ),
           ],
         ),
