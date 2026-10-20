@@ -11,6 +11,7 @@ import 'package:plate_scan/main.dart';
 import 'package:plate_scan/models/vehicle_result.dart';
 import 'package:plate_scan/screens/history_screen.dart';
 import 'package:plate_scan/screens/legal_doc_screen.dart';
+import 'package:plate_scan/screens/report_guide_screen.dart';
 import 'package:plate_scan/screens/result_screen.dart';
 import 'package:plate_scan/services/history_store.dart';
 import 'package:plate_scan/services/vehicle_lookup_service.dart';
@@ -148,6 +149,26 @@ void main() {
       expect(html, contains('<html lang="he" dir="rtl">'));
     }
     expect(find.text('רישיונות קוד פתוח'), findsOneWidget);
+
+    await tester.tap(find.text('איך מדווחים למשטרה'));
+    await tester.pumpAndSettle();
+    expect(find.text('הרכב לפניך עכשיו? חייג 100'), findsOneWidget);
+    expect(find.text('שמור תיעוד: שלח לעצמך בוואטסאפ'), findsOneWidget);
+  });
+
+  testWidgets('report guide fits at 200% text size', (tester) async {
+    tester.view
+      ..physicalSize = const Size(360 * 3, 640 * 3)
+      ..devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    await tester.pumpWidget(
+      _wrap(ReportGuideScreen(report: _services().report)),
+    );
+    await tester.scrollUntilVisible(find.text('מה לא לעשות'), 300);
+    expect(find.text('מה לא לעשות'), findsOneWidget);
   });
 
   test('a failed save does not throw', () async {

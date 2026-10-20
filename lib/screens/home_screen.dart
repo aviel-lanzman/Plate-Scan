@@ -131,8 +131,12 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             tooltip: 'מידע ותנאי שימוש',
             icon: const Icon(Icons.info_outline),
-            onPressed: () =>
-                _open(AboutScreen(onShowGuidelines: _showDisclaimer)),
+            onPressed: () => _open(
+              AboutScreen(
+                report: widget.services.report,
+                onShowGuidelines: _showDisclaimer,
+              ),
+            ),
           ),
         ],
       ),

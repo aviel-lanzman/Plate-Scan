@@ -11,6 +11,7 @@ import '../services/report_service.dart';
 import '../util/format.dart';
 import '../widgets/plate_badge.dart';
 import '../widgets/status_style.dart';
+import 'report_guide_screen.dart';
 import 'stolen_check_screen.dart';
 
 class ResultScreen extends StatefulWidget {
@@ -262,6 +263,13 @@ class _ResultScreenState extends State<ResultScreen> {
               onShare: _shareReport,
               onSms: _smsPolice,
               onComplaint: widget.services.report.openOnlineComplaint,
+              onGuide: () => Navigator.push(
+                context,
+                MaterialPageRoute<void>(
+                  builder: (_) =>
+                      ReportGuideScreen(report: widget.services.report),
+                ),
+              ),
               onViewPhoto: _viewPhoto,
               onRemovePhoto: _removePhoto,
             ),
@@ -430,6 +438,7 @@ class _ReportCard extends StatelessWidget {
     required this.onShare,
     required this.onSms,
     required this.onComplaint,
+    required this.onGuide,
     required this.onViewPhoto,
     required this.onRemovePhoto,
   });
@@ -441,6 +450,7 @@ class _ReportCard extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onSms;
   final VoidCallback onComplaint;
+  final VoidCallback onGuide;
   final ValueChanged<String> onViewPhoto;
   final ValueChanged<String> onRemovePhoto;
 
@@ -516,13 +526,18 @@ class _ReportCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              'למשטרה אין קו וואטסאפ לדיווחים. שמור או שלח לעצמך את הדיווח'
-              '${photos.isEmpty ? '' : ' והתמונות'}, כדי למסור אותם אם המשטרה תבקש, '
-              'או לצרף אותם לתלונה מקוונת. אל תפרסם אותם ברשתות החברתיות.'
+              'לתיעוד, לחץ "שתף" ובחר בוואטסאפ את הצ\'אט עם עצמך. '
+              'למשטרה אין קו וואטסאפ לדיווחים, אבל התיעוד ישמש אותך אם המשטרה תבקש פרטים'
+              '${photos.isEmpty ? '' : ' או תמונות'}, או לתלונה מקוונת. אל תפרסם אותו ברשתות החברתיות.'
               '${photos.isEmpty ? '' : ' טקסט הדיווח מועתק גם ללוח, למקרה שהאפליקציה שתבחר לא תצרף אותו לתמונות.'}',
               style: Theme.of(context).textTheme.bodySmall,
             ),
             const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: onGuide,
+              icon: const Icon(Icons.help_outline),
+              label: const Text('איך מדווחים למשטרה?'),
+            ),
             TextButton.icon(
               onPressed: onComplaint,
               icon: const Icon(Icons.open_in_new),

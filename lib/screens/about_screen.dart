@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../services/report_service.dart';
 import '../util/app_name.dart';
 import 'legal_doc_screen.dart';
+import 'report_guide_screen.dart';
 
 /// Usage guidelines, legal documents and open-source licences.
 class AboutScreen extends StatelessWidget {
-  const AboutScreen({super.key, required this.onShowGuidelines});
+  const AboutScreen({
+    super.key,
+    required this.report,
+    required this.onShowGuidelines,
+  });
+
+  final ReportService report;
 
   /// Shows the first-run guidelines again.
   final VoidCallback onShowGuidelines;
@@ -37,6 +45,18 @@ class AboutScreen extends StatelessWidget {
             ),
           ),
           const Divider(),
+          ListTile(
+            leading: const Icon(Icons.local_police_outlined),
+            title: const Text('איך מדווחים למשטרה'),
+            subtitle: const Text('למי לפנות, ואיך לשמור תיעוד בוואטסאפ'),
+            trailing: const Icon(Icons.chevron_left),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => ReportGuideScreen(report: report),
+              ),
+            ),
+          ),
           ListTile(
             leading: const Icon(Icons.rule),
             title: const Text('הנחיות שימוש'),
