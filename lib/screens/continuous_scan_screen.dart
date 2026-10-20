@@ -1,0 +1,355 @@
+import 'dart:async';
+import 'dart:collection';
+
+import 'package:camera/camera.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
+
+import '../app_services.dart';
+import '../models/vehicle_result.dart';
+import '../services/plate_camera.dart';
+import '../services/plate_parser.dart';
+import '../util/format.dart';
+import '../widgets/camera_view.dart';
+import '../widgets/plate_badge.dart';
+import '../widgets/status_style.dart';
+import 'result_screen.dart';
+
+class _Detection {
+  _Detection(this.plate, this.seenAt);
+
+  final String plate;
+  final DateTime seenAt;
+  VehicleResult? result;
+}
+
+/// Keeps the camera running, looks up every confirmed plate, and alerts on
+/// off-road or inactive vehicles.
+class ContinuousScanScreen extends StatefulWidget {
+  const ContinuousScanScreen({super.key, required this.services});
+
+  final AppServices services;
+
+  @override
+  State<ContinuousScanScreen> createState() => _ContinuousScanScreenState();
+}
+
+class _ContinuousScanScreenState extends State<ContinuousScanScreen>
+    with WidgetsBindingObserver {
+  static const _recheckAfter = Duration(minutes: 10);
+  static const _maxInFlight = 2;
+  static const _maxDetections = 50;
+
+  final _camera = PlateCamera();
+  final _voter = PlateVoter();
+  final _detections = <_Detection>[];
+  final _lastQueued = <String, DateTime>{};
+  final _pending = Queue<_Detection>();
+  int _inFlight = 0;
+  bool _paused = false;
+  _Detection? _alert;
+  Timer? _alertTimer;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WakelockPlus.enable();
+    _start();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    WakelockPlus.disable();
+    _alertTimer?.cancel();
+    _camera.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // The camera permission dialog also makes the app inactive, so only
+    // release a camera that has finished initializing.
+    if (state == AppLifecycleState.inactive && _camera.isRunning) {
+      _camera.stop().then((_) {
+        if (mounted) setState(() {});
+      });
+    } else if (state == AppLifecycleState.resumed &&
+        _camera.controller == null &&
+        !_paused) {
+      _start();
+    }
+  }
+
+  Future<void> _start() async {
+    try {
+      await _camera.start(_onCandidates);
+      if (mounted) setState(() => _error = null);
+    } on CameraException catch (e) {
+      if (!mounted) return;
+      setState(
+        () => _error = e.code == 'CameraAccessDenied'
+            ? 'אין הרשאה למצלמה. אפשר אותה בהגדרות המכשיר.'
+            : 'שגיאת מצלמה: ${e.description ?? e.code}',
+      );
+    }
+  }
+
+  void _onCandidates(List<String> candidates) {
+    if (!mounted) return;
+    final now = DateTime.now();
+    for (final plate in _voter.add(candidates)) {
+      final last = _lastQueued[plate];
+      if (last != null && now.difference(last) < _recheckAfter) continue;
+      _lastQueued[plate] = now;
+      final detection = _Detection(plate, now);
+      setState(() {
+        _detections.insert(0, detection);
+        if (_detections.length > _maxDetections) _detections.removeLast();
+      });
+      _pending.add(detection);
+    }
+    _pump();
+  }
+
+  void _pump() {
+    while (_inFlight < _maxInFlight && _pending.isNotEmpty) {
+      final detection = _pending.removeFirst();
+      _inFlight++;
+      widget.services.lookup
+          .lookup(detection.plate)
+          .then((result) => _onResult(detection, result))
+          .whenComplete(() {
+            _inFlight--;
+            if (mounted) _pump();
+          });
+    }
+  }
+
+  void _onResult(_Detection detection, VehicleResult result) {
+    if (!mounted) return;
+    setState(() => detection.result = result);
+    if (result.status != PlateStatus.error) {
+      widget.services.history.add(result);
+    }
+    if (result.status.isAlert) _raiseAlert(detection);
+  }
+
+  Future<void> _raiseAlert(_Detection detection) async {
+    _alertTimer?.cancel();
+    setState(() => _alert = detection);
+    _alertTimer = Timer(const Duration(seconds: 8), () {
+      if (mounted) setState(() => _alert = null);
+    });
+    SystemSound.play(SystemSoundType.alert);
+    for (var i = 0; i < 3; i++) {
+      await HapticFeedback.heavyImpact();
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+  }
+
+  Future<void> _open(_Detection detection) async {
+    _paused = true;
+    await _camera.stop();
+    if (!mounted) return;
+    await Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => ResultScreen(
+          services: widget.services,
+          plate: detection.plate,
+          // Errors are worth retrying, so look those up again.
+          initial: detection.result?.status == PlateStatus.error
+              ? null
+              : detection.result,
+        ),
+      ),
+    );
+    _paused = false;
+    _voter.reset();
+    if (mounted) _start();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final alert = _alert;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('סריקה רציפה'),
+        actions: [
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text('${_detections.length} לוחיות'),
+            ),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          Material(
+            color: Colors.amber.shade700,
+            child: const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.no_crash, color: Colors.black),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'לשימוש נוסע בלבד. אין להפעיל בזמן נהיגה.',
+                      style: TextStyle(color: Colors.black),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (_error case final error?)
+                  Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Text(error, textAlign: TextAlign.center),
+                    ),
+                  )
+                else
+                  CameraView(_camera.controller),
+                if (alert != null)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    right: 8,
+                    child: _AlertBanner(alert, onTap: () => _open(alert)),
+                  ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: _detections.isEmpty
+                ? const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text(
+                        'כוון את המצלמה לרכבים. לוחיות שיזוהו יופיעו כאן.',
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: _detections.length,
+                    separatorBuilder: (_, _) => const Divider(height: 1),
+                    itemBuilder: (context, i) {
+                      final d = _detections[i];
+                      return _DetectionTile(d, onTap: () => _open(d));
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Plate on one side; status, vehicle and time stacked beside it, so a long
+/// status label never squeezes the other text.
+class _DetectionTile extends StatelessWidget {
+  const _DetectionTile(this.detection, {required this.onTap});
+
+  final _Detection detection;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final summary = detection.result?.info?.summary;
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        child: Row(
+          children: [
+            PlateBadge(detection.plate, fontSize: 16),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  StatusLabel(detection.result?.status),
+                  if (summary != null && summary.isNotEmpty)
+                    Text(
+                      summary,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  Text(
+                    formatTime(detection.seenAt),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _AlertBanner extends StatelessWidget {
+  const _AlertBanner(this.detection, {required this.onTap});
+
+  final _Detection detection;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = detection.result!.status;
+    return Material(
+      color: status.color,
+      elevation: 6,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Icon(status.icon, color: Colors.white, size: 36),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${formatPlate(detection.plate)}: ${status.label}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Text(
+                      'הקש לפרטים ולדיווח',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
