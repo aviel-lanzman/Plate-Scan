@@ -487,7 +487,12 @@ class _ReportCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             FilledButton.icon(
-              style: FilledButton.styleFrom(backgroundColor: red),
+              // White on red in both themes; the default dark-theme
+              // foreground is a dark blue that is unreadable on red.
+              style: FilledButton.styleFrom(
+                backgroundColor: red,
+                foregroundColor: Colors.white,
+              ),
               onPressed: onCall,
               icon: const Icon(Icons.phone),
               label: const Text('התקשר 100'),
@@ -568,7 +573,8 @@ class _PhotoThumb extends StatelessWidget {
   final VoidCallback onTap;
   final VoidCallback onRemove;
 
-  static const _size = 96.0;
+  // Three fit side by side in the report card on a 360dp-wide phone.
+  static const _size = 88.0;
 
   @override
   Widget build(BuildContext context) {

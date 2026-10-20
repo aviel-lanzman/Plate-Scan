@@ -28,6 +28,7 @@ class ReportGuideScreen extends StatelessWidget {
             action: FilledButton.icon(
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.red.shade700,
+                foregroundColor: Colors.white,
               ),
               onPressed: report.callPolice,
               icon: const Icon(Icons.phone),
