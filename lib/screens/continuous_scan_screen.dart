@@ -154,13 +154,26 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
     if (result.status.isAlert) _raiseAlert(detection);
   }
 
+  static const _alertChannel = MethodChannel('plate_scan/alert');
+
+  /// Android beeps natively; elsewhere this is a best-effort system sound.
+  Future<void> _beep() async {
+    try {
+      await _alertChannel.invokeMethod<bool>('beep');
+    } on MissingPluginException {
+      await SystemSound.play(SystemSoundType.alert);
+    } on PlatformException catch (e) {
+      debugPrint('Alert beep failed: $e');
+    }
+  }
+
   Future<void> _raiseAlert(_Detection detection) async {
     _alertTimer?.cancel();
     setState(() => _alert = detection);
     _alertTimer = Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _alert = null);
     });
-    SystemSound.play(SystemSoundType.alert);
+    _beep();
     SemanticsService.sendAnnouncement(
       View.of(context),
       'התרעה: ${formatPlate(detection.plate)}, ${detection.result!.status.label}',
