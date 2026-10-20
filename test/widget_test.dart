@@ -96,6 +96,43 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsNothing);
   });
 
+  // Android allows font scaling up to 200%; overflow errors fail the test.
+  testWidgets('screens fit a small phone at 200% text size', (tester) async {
+    tester.view
+      ..physicalSize = const Size(360 * 3, 640 * 3)
+      ..devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    final services = _services();
+    await tester.pumpWidget(PlateScanApp(services: services));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('הבנתי'));
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(find.byType(TextField), 200);
+    await tester.enterText(find.byType(TextField), '7735636');
+    await tester.testTextInput.receiveAction(TextInputAction.done);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('התקשר 100'),
+      200,
+      scrollable: find.byType(Scrollable).last,
+    );
+
+    await tester.tap(find.byType(BackButton));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(
+      find.text('היסטוריית בדיקות'),
+      200,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.tap(find.text('היסטוריית בדיקות'));
+    await tester.pumpAndSettle();
+    expect(find.text('ירד מהכביש'), findsOneWidget);
+  });
+
   test('a failed save does not throw', () async {
     await _BrokenHistory().add(
       VehicleResult(

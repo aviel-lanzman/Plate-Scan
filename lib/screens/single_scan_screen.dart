@@ -1,5 +1,6 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import '../app_services.dart';
@@ -85,6 +86,11 @@ class _SingleScanScreenState extends State<SingleScanScreen>
     }
     HapticFeedback.mediumImpact();
     final plate = confirmed.first;
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      'זוהה מספר ${plate.split('').join(' ')}. ודא שהוא נכון ולחץ בדוק.',
+      TextDirection.rtl,
+    );
     // Grab the frames before stop() releases them.
     _photos = widget.services.photos.save(plate, _camera.framesWith(plate));
     _seenAt = DateTime.now();

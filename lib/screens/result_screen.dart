@@ -337,11 +337,15 @@ class _StolenCard extends StatelessWidget {
             else
               ListTile(
                 contentPadding: EdgeInsets.zero,
-                leading: Icon(outcome.icon, color: outcome.color, size: 32),
+                leading: Icon(
+                  outcome.icon,
+                  color: outcome.textColor(context),
+                  size: 32,
+                ),
                 title: Text(
                   outcome.label,
                   style: TextStyle(
-                    color: outcome.color,
+                    color: outcome.textColor(context),
                     fontWeight: FontWeight.bold,
                   ),
                 ),

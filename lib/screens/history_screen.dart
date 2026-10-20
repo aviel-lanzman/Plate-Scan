@@ -3,8 +3,7 @@ import 'package:flutter/material.dart';
 import '../app_services.dart';
 import '../models/vehicle_result.dart';
 import '../util/format.dart';
-import '../widgets/plate_badge.dart';
-import '../widgets/status_style.dart';
+import '../widgets/plate_result_tile.dart';
 import 'result_screen.dart';
 
 class HistoryScreen extends StatefulWidget {
@@ -102,32 +101,12 @@ class _HistoryScreenState extends State<HistoryScreen> {
             separatorBuilder: (_, _) => const Divider(height: 1),
             itemBuilder: (context, i) {
               final e = entries[i];
-              final stolen = e.stolenCheck;
-              return ListTile(
-                leading: PlateBadge(e.plate, fontSize: 16),
-                title: Row(
-                  children: [
-                    Icon(e.status.icon, color: e.status.color, size: 18),
-                    const SizedBox(width: 4),
-                    Flexible(
-                      child: Text(
-                        e.status.label,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (stolen != null) ...[
-                      const SizedBox(width: 8),
-                      Icon(stolen.icon, color: stolen.color, size: 18),
-                    ],
-                  ],
-                ),
-                subtitle: Text(
-                  [
-                    e.info?.summary,
-                    formatDateTime(e.checkedAt),
-                  ].whereType<String>().where((s) => s.isNotEmpty).join('\n'),
-                ),
-                isThreeLine: e.info?.summary.isNotEmpty ?? false,
+              return PlateResultTile(
+                plate: e.plate,
+                status: e.status,
+                stolen: e.stolenCheck,
+                summary: e.info?.summary,
+                time: formatDateTime(e.checkedAt),
                 onTap: () => _open(e),
               );
             },

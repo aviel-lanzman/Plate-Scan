@@ -3,6 +3,7 @@ import 'dart:collection';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
@@ -12,7 +13,7 @@ import '../services/plate_camera.dart';
 import '../services/plate_parser.dart';
 import '../util/format.dart';
 import '../widgets/camera_view.dart';
-import '../widgets/plate_badge.dart';
+import '../widgets/plate_result_tile.dart';
 import '../widgets/status_style.dart';
 import 'result_screen.dart';
 
@@ -160,6 +161,12 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
       if (mounted) setState(() => _alert = null);
     });
     SystemSound.play(SystemSoundType.alert);
+    SemanticsService.sendAnnouncement(
+      View.of(context),
+      'התרעה: ${formatPlate(detection.plate)}, ${detection.result!.status.label}',
+      TextDirection.rtl,
+      assertiveness: Assertiveness.assertive,
+    );
     for (var i = 0; i < 3; i++) {
       await HapticFeedback.heavyImpact();
       await Future<void>.delayed(const Duration(milliseconds: 250));
@@ -268,57 +275,17 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
                     separatorBuilder: (_, _) => const Divider(height: 1),
                     itemBuilder: (context, i) {
                       final d = _detections[i];
-                      return _DetectionTile(d, onTap: () => _open(d));
+                      return PlateResultTile(
+                        plate: d.plate,
+                        status: d.result?.status,
+                        summary: d.result?.info?.summary,
+                        time: formatTime(d.seenAt),
+                        onTap: () => _open(d),
+                      );
                     },
                   ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// Plate on one side; status, vehicle and time stacked beside it, so a long
-/// status label never squeezes the other text.
-class _DetectionTile extends StatelessWidget {
-  const _DetectionTile(this.detection, {required this.onTap});
-
-  final _Detection detection;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final summary = detection.result?.info?.summary;
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-        child: Row(
-          children: [
-            PlateBadge(detection.plate, fontSize: 16),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  StatusLabel(detection.result?.status),
-                  if (summary != null && summary.isNotEmpty)
-                    Text(
-                      summary,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  Text(
-                    formatTime(detection.seenAt),
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }
