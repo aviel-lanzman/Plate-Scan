@@ -5,11 +5,13 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'app_services.dart';
 import 'screens/home_screen.dart';
 import 'util/app_name.dart';
+import 'util/licenses.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // The camera-to-OCR rotation math assumes a portrait UI.
   await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+  registerNativeLicenses();
   final services = AppServices();
   // No screen is open yet, so any photo on disk was left by a killed app.
   services.photos.deleteAll();
