@@ -38,17 +38,27 @@ class CapturedFrame {
 /// The files live in the app's temporary directory. The screen that took
 /// them deletes them when it closes, and [deleteAll] runs at launch for any
 /// left behind when the app was killed. They leave the device only through
-/// the share sheet.
+/// the share sheet; the share_plus plugin keeps its own copies of what was
+/// shared in its cache folder, which is cleared together with the photos.
 class ReportPhotos {
-  ReportPhotos({Future<Directory> Function()? directory})
-    : _directory = directory ?? _defaultDirectory;
+  ReportPhotos({
+    Future<Directory> Function()? directory,
+    Future<Directory> Function()? shareCacheDirectory,
+  }) : _directory = directory ?? _defaultDirectory,
+       _shareCache = shareCacheDirectory ?? _defaultShareCache;
 
   static const maxPhotos = 3;
 
   final Future<Directory> Function() _directory;
+  final Future<Directory> Function() _shareCache;
 
   static Future<Directory> _defaultDirectory() async =>
       Directory('${(await getTemporaryDirectory()).path}/report_photos');
+
+  /// share_plus copies shared files to `cacheDir/share_plus` and only clears
+  /// them before the next share, so they would outlive the photos.
+  static Future<Directory> _defaultShareCache() async =>
+      Directory('${(await getTemporaryDirectory()).path}/share_plus');
 
   /// Writes up to [maxPhotos] of [frames], spread over the time the plate was
   /// in view, and returns their paths. Photos are optional evidence, so a
@@ -66,20 +76,24 @@ class ReportPhotos {
       ];
       return await compute(_writeJpegs, (picked, paths));
     } on Object catch (e) {
-      debugPrint('ReportPhotos: could not save photos of $plate: $e');
+      debugPrint('ReportPhotos: could not save photos: $e');
       return const [];
     }
   }
 
-  /// Deletes [paths], ignoring files that are already gone.
+  /// Deletes [paths], ignoring files that are already gone, and the copies
+  /// that were shared from them.
   Future<void> delete(Iterable<String> paths) async {
+    var any = false;
     for (final path in paths) {
+      any = true;
       try {
         await File(path).delete();
       } on Object {
         // Already deleted, e.g. by deleteAll().
       }
     }
+    if (any) await _deleteShareCache();
   }
 
   /// Deletes every saved photo. Only safe when no screen is using them.
@@ -89,6 +103,16 @@ class ReportPhotos {
       if (await dir.exists()) await dir.delete(recursive: true);
     } on Object catch (e) {
       debugPrint('ReportPhotos: could not delete photos: $e');
+    }
+    await _deleteShareCache();
+  }
+
+  Future<void> _deleteShareCache() async {
+    try {
+      final dir = await _shareCache();
+      if (await dir.exists()) await dir.delete(recursive: true);
+    } on Object catch (e) {
+      debugPrint('ReportPhotos: could not delete shared copies: $e');
     }
   }
 

@@ -1,4 +1,7 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:plate_scan/models/vehicle_result.dart';
 import 'package:plate_scan/services/history_store.dart';
 import 'package:plate_scan/services/report_service.dart';
@@ -93,6 +96,96 @@ void main() {
 
       SharedPreferences.setMockInitialValues({'history_v1': 'not json'});
       expect(await HistoryStore().load(), isEmpty);
+    });
+
+    test('overlapping adds are applied in order and none is lost', () async {
+      final store = HistoryStore();
+      final a = store.add(_result('1111111'));
+      final b = store.add(_result('2222222'));
+      final c = store.add(_result('3333333'));
+      await Future.wait([a, b, c]);
+      final entries = await store.load();
+      expect(entries.map((e) => e.plate), ['3333333', '2222222', '1111111']);
+    });
+
+    test('one malformed entry does not hide the others', () async {
+      final good = _result('1111111').toJson();
+      final goodToo = _result('2222222').toJson();
+      SharedPreferences.setMockInitialValues({
+        'history_v1': jsonEncode([
+          good,
+          {'plate': 5},
+          'junk',
+          goodToo,
+        ]),
+      });
+      final store = HistoryStore();
+      expect((await store.load()).map((e) => e.plate), ['1111111', '2222222']);
+      await store.add(_result('3333333'));
+      expect((await store.load()).map((e) => e.plate), [
+        '3333333',
+        '1111111',
+        '2222222',
+      ]);
+    });
+
+    test('an unknown status skips only that entry', () async {
+      final unknown = _result('9999999').toJson()..['status'] = 'flying';
+      SharedPreferences.setMockInitialValues({
+        'history_v1': jsonEncode([unknown, _result('1111111').toJson()]),
+      });
+      expect((await HistoryStore().load()).map((e) => e.plate), ['1111111']);
+    });
+
+    test('optional fields may be missing or odd', () async {
+      final json = _result('1111111').toJson()
+        ..remove('info')
+        ..['stolenCheck'] = 'newer-outcome';
+      SharedPreferences.setMockInitialValues({
+        'history_v1': jsonEncode([json]),
+      });
+      final entry = (await HistoryStore().load()).single;
+      expect(entry.info, isNull);
+      expect(entry.stolenCheck, isNull);
+      expect(entry.partial, isFalse);
+    });
+
+    test('an undecodable value is kept aside, not overwritten', () async {
+      SharedPreferences.setMockInitialValues({'history_v1': '{not json'});
+      final store = HistoryStore();
+      await store.add(_result('1111111'));
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('history_v1_unreadable'), '{not json');
+      expect((await store.load()).map((e) => e.plate), ['1111111']);
+      await store.clear();
+      expect(prefs.getString('history_v1_unreadable'), isNull);
+    });
+  });
+
+  group('ReportService.recentOrNull', () {
+    final now = DateTime(2026, 10, 20, 12);
+    Position at(DateTime t) => Position(
+      latitude: 32,
+      longitude: 34,
+      timestamp: t,
+      accuracy: 10,
+      altitude: 0,
+      altitudeAccuracy: 0,
+      heading: 0,
+      headingAccuracy: 0,
+      speed: 0,
+      speedAccuracy: 0,
+    );
+
+    test('keeps a fix up to two minutes old', () {
+      final fresh = at(now.subtract(const Duration(minutes: 2)));
+      expect(ReportService.recentOrNull(fresh, now: now), fresh);
+    });
+
+    test('drops an older fix or none', () {
+      final old = at(now.subtract(const Duration(minutes: 2, seconds: 1)));
+      expect(ReportService.recentOrNull(old, now: now), isNull);
+      expect(ReportService.recentOrNull(null, now: now), isNull);
     });
   });
 }

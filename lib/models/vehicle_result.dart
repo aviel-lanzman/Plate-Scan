@@ -74,13 +74,13 @@ class VehicleInfo {
   );
 
   factory VehicleInfo.fromJson(Map<String, dynamic> json) => VehicleInfo(
-    manufacturer: json['manufacturer'] as String?,
-    model: json['model'] as String?,
-    color: json['color'] as String?,
-    year: json['year'] as int?,
-    vehicleType: json['vehicleType'] as String?,
-    licenseValidUntil: json['licenseValidUntil'] as String?,
-    cancelledOn: json['cancelledOn'] as String?,
+    manufacturer: _stored<String>(json['manufacturer']),
+    model: _stored<String>(json['model']),
+    color: _stored<String>(json['color']),
+    year: _stored<int>(json['year']),
+    vehicleType: _stored<String>(json['vehicleType']),
+    licenseValidUntil: _stored<String>(json['licenseValidUntil']),
+    cancelledOn: _stored<String>(json['cancelledOn']),
   );
 
   final String? manufacturer;
@@ -126,6 +126,9 @@ class VehicleInfo {
     'cancelledOn': cancelledOn,
   };
 
+  /// Optional stored fields: a value of an unexpected type counts as missing.
+  static T? _stored<T>(Object? value) => value is T ? value : null;
+
   static String? _text(Object? value) {
     final s = value?.toString().trim();
     return (s == null || s.isEmpty) ? null : s;
@@ -142,18 +145,25 @@ class VehicleResult {
     required this.checkedAt,
     this.info,
     this.stolenCheck,
+    this.partial = false,
   });
 
+  /// Plate, status and time are required (throws without them, or with an
+  /// unknown status); the optional fields are read leniently so one odd
+  /// field does not cost the whole history entry.
   factory VehicleResult.fromJson(Map<String, dynamic> json) => VehicleResult(
     plate: json['plate'] as String,
     status: PlateStatus.values.byName(json['status'] as String),
     checkedAt: DateTime.parse(json['checkedAt'] as String),
-    info: json['info'] == null
-        ? null
-        : VehicleInfo.fromJson(json['info'] as Map<String, dynamic>),
-    stolenCheck: json['stolenCheck'] == null
-        ? null
-        : StolenCheckOutcome.values.byName(json['stolenCheck'] as String),
+    info: switch (json['info']) {
+      final Map<String, dynamic> info => VehicleInfo.fromJson(info),
+      _ => null,
+    },
+    stolenCheck: switch (json['stolenCheck']) {
+      final String name => StolenCheckOutcome.values.asNameMap()[name],
+      _ => null,
+    },
+    partial: json['partial'] == true,
   );
 
   /// Digits only, e.g. "1234567".
@@ -162,6 +172,11 @@ class VehicleResult {
   final DateTime checkedAt;
   final VehicleInfo? info;
   final StolenCheckOutcome? stolenCheck;
+
+  /// True when at least one dataset query failed but the result is not an
+  /// error, e.g. an "active" answer while the off-road dataset did not
+  /// reply. Such a result is not cached.
+  final bool partial;
 
   bool get needsReport =>
       status.isAlert || stolenCheck == StolenCheckOutcome.stolen;
@@ -172,6 +187,7 @@ class VehicleResult {
     checkedAt: checkedAt,
     info: info,
     stolenCheck: outcome,
+    partial: partial,
   );
 
   Map<String, dynamic> toJson() => {
@@ -180,5 +196,6 @@ class VehicleResult {
     'checkedAt': checkedAt.toIso8601String(),
     'info': info?.toJson(),
     'stolenCheck': stolenCheck?.name,
+    if (partial) 'partial': true,
   };
 }

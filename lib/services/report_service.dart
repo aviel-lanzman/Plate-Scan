@@ -1,3 +1,6 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:share_plus/share_plus.dart';
@@ -33,7 +36,19 @@ class ReportService {
   Future<bool> openOnlineComplaint() =>
       launchUrl(onlineComplaint, mode: LaunchMode.externalApplication);
 
-  /// Best-effort location; null if unavailable or denied.
+  /// A last known fix older than this is not used as the report location.
+  static const maxLastKnownAge = Duration(minutes: 2);
+
+  /// [position] if it is recent enough to stand for the current location.
+  @visibleForTesting
+  static Position? recentOrNull(Position? position, {DateTime? now}) {
+    if (position == null) return null;
+    final age = (now ?? DateTime.now()).difference(position.timestamp);
+    return age <= maxLastKnownAge ? position : null;
+  }
+
+  /// Best-effort location; null if unavailable or denied. When no fresh fix
+  /// arrives in time, a last known one at most [maxLastKnownAge] old is used.
   Future<Position?> currentPosition() async {
     try {
       if (!await Geolocator.isLocationServiceEnabled()) return null;
@@ -45,12 +60,16 @@ class ReportService {
           permission == LocationPermission.deniedForever) {
         return null;
       }
-      return await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 10),
-        ),
-      );
+      try {
+        return await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            timeLimit: Duration(seconds: 10),
+          ),
+        );
+      } on TimeoutException {
+        return recentOrNull(await Geolocator.getLastKnownPosition());
+      }
     } on Object {
       return null;
     }

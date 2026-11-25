@@ -23,6 +23,13 @@ void main() {
       expect(PlateParser.parseLine('12-3S5-67'), '1235567');
     });
 
+    test('a stray IL-strip letter is not turned into a digit', () {
+      expect(PlateParser.parseLine('I 12-345-67'), '1234567');
+      expect(PlateParser.parseLine('| 12-345-67'), '1234567');
+      expect(PlateParser.parseLine('12-345-67 I'), '1234567');
+      expect(PlateParser.parseLine('l 123-45-678 !'), '12345678');
+    });
+
     test('rejects text that is not a plate', () {
       expect(PlateParser.parseLine('123456'), isNull); // too short
       expect(PlateParser.parseLine('123456789'), isNull); // too long

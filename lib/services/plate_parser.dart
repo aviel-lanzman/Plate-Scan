@@ -42,22 +42,45 @@ class PlateParser {
     final tokens = line
         .trim()
         .split(RegExp(r'\s+'))
-        .where((t) => t.isNotEmpty && !_countryTokens.hasMatch(t));
-    final joined = tokens.join().replaceAll(_separators, '');
+        .where((t) => t.isNotEmpty && !_countryTokens.hasMatch(t))
+        .toList();
+    String join(List<String> t) => t.join().replaceAll(_separators, '');
+    final joined = join(tokens);
     if (joined.isEmpty) return null;
 
-    for (final candidate in {
+    // A lone "I" next to the number is usually the "IL" strip, not a digit,
+    // so also try without it.
+    final hasLeadingStray = tokens.length > 1 && _isStray(tokens.first);
+    final hasTrailingStray = tokens.length > 1 && _isStray(tokens.last);
+    final candidates = {
       joined,
       joined.replaceFirst(_countryPrefix, ''),
       joined.replaceFirst(_countrySuffix, ''),
-    }) {
-      final digits = _fixDigits(candidate);
-      if (digits != null && _plate.hasMatch(digits)) return digits;
+      if (hasLeadingStray) join(tokens.sublist(1)),
+      if (hasTrailingStray) join(tokens.sublist(0, tokens.length - 1)),
+      if (hasLeadingStray && hasTrailingStray && tokens.length > 2)
+        join(tokens.sublist(1, tokens.length - 1)),
+    };
+
+    // The reading that needs the fewest letter-to-digit fixes wins; ties keep
+    // the order above.
+    String? best;
+    var bestFixes = _maxFixes + 1;
+    for (final candidate in candidates) {
+      final fixed = _fixDigits(candidate);
+      if (fixed == null || !_plate.hasMatch(fixed.digits)) continue;
+      if (fixed.fixes < bestFixes) {
+        best = fixed.digits;
+        bestFixes = fixed.fixes;
+      }
     }
-    return null;
+    return best;
   }
 
-  static String? _fixDigits(String s) {
+  static bool _isStray(String token) =>
+      token.length == 1 && const {'I', 'i', 'l', '|', '!'}.contains(token);
+
+  static ({String digits, int fixes})? _fixDigits(String s) {
     var fixes = 0;
     final out = StringBuffer();
     for (final ch in s.split('')) {
@@ -69,7 +92,7 @@ class PlateParser {
         return null;
       }
     }
-    return out.toString();
+    return (digits: out.toString(), fixes: fixes);
   }
 
   static bool _isDigit(String ch) {

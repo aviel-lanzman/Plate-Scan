@@ -37,6 +37,7 @@ class VehicleLookupService {
     http.Client? client,
     this.timeout = const Duration(seconds: 10),
     this.cacheTtl = const Duration(hours: 12),
+    this.retryDelay = const Duration(milliseconds: 500),
     DateTime Function()? clock,
   }) : _client = client ?? http.Client(),
        _clock = clock ?? DateTime.now;
@@ -91,6 +92,9 @@ class VehicleLookupService {
   final DateTime Function() _clock;
   final Duration timeout;
   final Duration cacheTtl;
+
+  /// Pause before the single retry of a timed-out, 5xx or 429 request.
+  final Duration retryDelay;
   final _cache = <String, VehicleResult>{};
 
   /// [plate] is digits only. Never throws: failures yield [PlateStatus.error].
@@ -135,6 +139,7 @@ class VehicleLookupService {
         plate,
         PlateStatus.offRoad,
         active == null ? offRoad : offRoad.mergedWith(active),
+        failed,
       );
     }
     if (found[_DatasetKind.active] case final active?) {
@@ -143,23 +148,36 @@ class VehicleLookupService {
         plate,
         expired ? PlateStatus.licenseExpired : PlateStatus.active,
         active,
+        failed,
       );
     }
     if (found[_DatasetKind.inactive] case final inactive?) {
-      return _result(plate, PlateStatus.inactive, inactive);
+      return _result(plate, PlateStatus.inactive, inactive, failed);
     }
     // "Not found" is only trustworthy when every query succeeded.
     return _result(plate, failed ? PlateStatus.error : PlateStatus.notFound);
   }
 
-  VehicleResult _result(String plate, PlateStatus status, [VehicleInfo? info]) {
+  /// [partial] results (some dataset did not answer) are not cached, so the
+  /// next check asks again.
+  VehicleResult _result(
+    String plate,
+    PlateStatus status, [
+    VehicleInfo? info,
+    bool partial = false,
+  ]) {
+    final now = _clock();
     final result = VehicleResult(
       plate: plate,
       status: status,
       info: info,
-      checkedAt: _clock(),
+      checkedAt: now,
+      partial: partial && status != PlateStatus.error,
     );
-    if (status != PlateStatus.error) _cache[plate] = result;
+    if (status != PlateStatus.error && !result.partial) {
+      _cache.removeWhere((_, r) => now.difference(r.checkedAt) >= cacheTtl);
+      _cache[plate] = result;
+    }
     return result;
   }
 
@@ -179,9 +197,7 @@ class VehicleLookupService {
         'limit': '1',
       },
     );
-    final response = await _client
-        .get(uri, headers: const {'User-Agent': 'PlateScan/1.0'})
-        .timeout(timeout);
+    final response = await _get(uri);
     if (response.statusCode != 200) {
       throw LookupException('HTTP ${response.statusCode} for $resourceId');
     }
@@ -191,6 +207,24 @@ class VehicleLookupService {
     }
     final records = (body['result'] as Map<String, dynamic>)['records'] as List;
     return records.isEmpty ? null : records.first as Map<String, dynamic>;
+  }
+
+  /// One retry for a timeout, a server error or rate limiting; anything
+  /// else (404, bad JSON) will not improve by asking again.
+  Future<http.Response> _get(Uri uri) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final response = await _client
+            .get(uri, headers: const {'User-Agent': 'PlateScan/1.0'})
+            .timeout(timeout);
+        final retryable =
+            response.statusCode >= 500 || response.statusCode == 429;
+        if (!retryable || attempt > 0) return response;
+      } on TimeoutException {
+        if (attempt > 0) rethrow;
+      }
+      await Future<void>.delayed(retryDelay);
+    }
   }
 
   void dispose() => _client.close();

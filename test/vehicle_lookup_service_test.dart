@@ -53,8 +53,11 @@ MockClient _client(
 
 final _now = DateTime(2026, 10, 20, 12);
 
-VehicleLookupService _service(MockClient client) =>
-    VehicleLookupService(client: client, clock: () => _now);
+VehicleLookupService _service(MockClient client) => VehicleLookupService(
+  client: client,
+  clock: () => _now,
+  retryDelay: Duration.zero,
+);
 
 void main() {
   test('off-road wins and merges details', () async {
@@ -172,7 +175,107 @@ void main() {
         failing: {_offRoadOld},
       ),
     );
-    expect((await service.lookup('1234567')).status, PlateStatus.active);
+    final result = await service.lookup('1234567');
+    expect(result.status, PlateStatus.active);
+    expect(result.partial, isTrue);
+  });
+
+  test(
+    'a partial result is not cached; the flag is stored only when set',
+    () async {
+      final log = <Uri>[];
+      final service = _service(
+        _client(
+          {
+            _active: {'mispar_rechev': 1234567, 'tokef_dt': '2027-01-01'},
+          },
+          failing: {_offRoadOld},
+          log: log,
+        ),
+      );
+      final first = await service.lookup('1234567');
+      final afterFirst = log.length;
+      await service.lookup('1234567');
+      expect(log.length, greaterThan(afterFirst));
+      expect(first.toJson()['partial'], isTrue);
+
+      final complete = await _service(_client({})).lookup('1234567');
+      expect(complete.partial, isFalse);
+      expect(complete.toJson().containsKey('partial'), isFalse);
+      final back = VehicleResult.fromJson(first.toJson());
+      expect(back.partial, isTrue);
+      expect(back.withStolenCheck(StolenCheckOutcome.clean).partial, isTrue);
+    },
+  );
+
+  test('a 429 is retried once', () async {
+    var calls = 0;
+    final service = _service(
+      MockClient((request) async {
+        calls++;
+        if (calls == 1) return http.Response('slow down', 429);
+        return _records([]);
+      }),
+    );
+    expect((await service.lookup('1234567')).status, PlateStatus.notFound);
+    expect(calls, 9); // 8 datasets + the one retry
+  });
+
+  test('a persistent 429 or 5xx is retried only once per query', () async {
+    for (final code in [429, 503]) {
+      var calls = 0;
+      final service = _service(
+        MockClient((_) async {
+          calls++;
+          return http.Response('no', code);
+        }),
+      );
+      expect((await service.lookup('1234567')).status, PlateStatus.error);
+      expect(calls, 16); // all 8 datasets, twice each
+    }
+  });
+
+  test('a 404 is not retried', () async {
+    var calls = 0;
+    final service = _service(
+      MockClient((_) async {
+        calls++;
+        return http.Response('missing', 404);
+      }),
+    );
+    expect((await service.lookup('1234567')).status, PlateStatus.error);
+    expect(calls, 8); // all 8 datasets, once each
+  });
+
+  test(
+    'success false, missing result and non-JSON bodies are errors',
+    () async {
+      for (final body in [
+        jsonEncode({'success': false}),
+        jsonEncode({'success': true}),
+        '<html>maintenance</html>',
+      ]) {
+        final service = _service(
+          MockClient((_) async => http.Response(body, 200)),
+        );
+        expect((await service.lookup('1234567')).status, PlateStatus.error);
+      }
+    },
+  );
+
+  test('a timeout is retried once', () async {
+    var calls = 0;
+    final service = VehicleLookupService(
+      client: MockClient((_) {
+        calls++;
+        return Completer<http.Response>().future;
+      }),
+      timeout: const Duration(milliseconds: 10),
+      retryDelay: Duration.zero,
+      clock: () => _now,
+    );
+    expect((await service.lookup('1234567')).status, PlateStatus.error);
+    expect(calls, 16);
   });
 
   test('timeouts become errors', () async {
@@ -204,7 +307,7 @@ void main() {
     final failing = _service(_client({}, failing: {_active}, log: failingLog));
     await failing.lookup('1234567');
     await failing.lookup('1234567');
-    expect(failingLog, hasLength(16));
+    expect(failingLog, hasLength(18)); // 16 + one retry of the 500 each time
   });
 
   test('VehicleResult survives a JSON round trip', () {

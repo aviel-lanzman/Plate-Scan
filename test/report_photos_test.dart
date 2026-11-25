@@ -95,14 +95,48 @@ void main() {
 
   group('ReportPhotos', () {
     late Directory dir;
+    late Directory shareCache;
     late ReportPhotos photos;
 
     setUp(() async {
       dir = await Directory.systemTemp.createTemp('report_photos_test');
-      photos = ReportPhotos(directory: () async => dir);
+      shareCache = Directory('${dir.path}_share_plus');
+      photos = ReportPhotos(
+        directory: () async => dir,
+        shareCacheDirectory: () async => shareCache,
+      );
     });
 
-    tearDown(() => dir.delete(recursive: true));
+    tearDown(() async {
+      if (dir.existsSync()) await dir.delete(recursive: true);
+      if (shareCache.existsSync()) await shareCache.delete(recursive: true);
+    });
+
+    File sharedCopy() => File('${shareCache.path}/1234567_1_1.jpg')
+      ..createSync(recursive: true)
+      ..writeAsBytesSync([1, 2, 3]);
+
+    test('deleteAll also removes the copies share_plus made', () async {
+      final copy = sharedCopy();
+      await photos.deleteAll();
+      expect(copy.existsSync(), isFalse);
+      expect(shareCache.existsSync(), isFalse);
+    });
+
+    test('delete also removes the copies share_plus made', () async {
+      final paths = await photos.save('1234567', [
+        _nv21(32, 16, y: 0, u: 128, v: 128),
+      ]);
+      final copy = sharedCopy();
+      await photos.delete(paths);
+      expect(copy.existsSync(), isFalse);
+    });
+
+    test('deleteAll is safe when the share cache does not exist', () async {
+      expect(shareCache.existsSync(), isFalse);
+      await photos.deleteAll();
+      await photos.delete(const ['/no/such/file.jpg']);
+    });
 
     test('saves up to maxPhotos JPEGs and deletes them', () async {
       final frames = List.generate(
