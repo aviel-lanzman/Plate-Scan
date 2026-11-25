@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../app_services.dart';
 import '../services/plate_parser.dart';
 import '../util/app_name.dart';
+import '../widgets/plate_number_field.dart';
 import 'about_screen.dart';
 import 'continuous_scan_screen.dart';
 import 'history_screen.dart';
@@ -49,61 +49,65 @@ class _HomeScreenState extends State<HomeScreen> {
       // Without storage, show the disclaimer every launch rather than never.
     }
     if (!mounted) return;
-    await _showDisclaimer(firstRun: true);
-    await prefs?.setBool(_disclaimerKey, true);
+    // Only the "מסכים" button counts; Back cannot dismiss the first-run terms.
+    final accepted = await _showDisclaimer(firstRun: true);
+    if (accepted == true) await prefs?.setBool(_disclaimerKey, true);
   }
 
   /// On first run the user accepts the terms; later it is just a reminder.
-  Future<void> _showDisclaimer({bool firstRun = false}) => showDialog<void>(
+  Future<bool?> _showDisclaimer({bool firstRun = false}) => showDialog<bool>(
     context: context,
     barrierDismissible: !firstRun,
-    builder: (context) => AlertDialog(
-      title: const Text('לפני שמתחילים'),
-      content: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              '• אין להשתמש באפליקציה בזמן נהיגה. הסריקה הרציפה מיועדת לנוסע בלבד.\n\n'
-              '• אין להתעמת עם נהג או לנסות לעצור רכב. אם נתקלת ברכב חשוד, דווח למוקד 100.\n\n'
-              '• המידע מגיע ממאגרי משרד התחבורה ומאתר משטרת ישראל, ואינו מהווה אישור לכך שרכב גנוב או לא. '
-              'המאגרים מתעדכנים מדי יום, וזיהוי המספר מהמצלמה עלול לטעות. תמיד ודא שהמספר נקרא נכון.\n\n'
-              '• שתף דיווחים ותמונות רק עם המשטרה. אין לפרסם מספרי רכב, תמונות או חשדות ברשתות החברתיות.\n\n'
-              '• רק מספר הרישוי נשלח לבדיקה. ההיסטוריה ותמונות הסריקה נשמרות במכשיר בלבד.\n\n'
-              '• האפליקציה אינה קשורה למשטרת ישראל, למשרד התחבורה או לכל גוף ממשלתי אחר. '
-              'מקורות המידע: מאגרי משרד התחבורה באתר data.gov.il, '
-              'ושירות "רכב גנוב" של משטרת ישראל באתר gov.il.',
-            ),
-            if (firstRun) ...[
-              const SizedBox(height: 16),
+    builder: (context) => PopScope(
+      canPop: !firstRun,
+      child: AlertDialog(
+        title: const Text('לפני שמתחילים'),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
               const Text(
-                'בלחיצה על "מסכים" אתה מאשר את תנאי השימוש ואת מדיניות הפרטיות.',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                '• אין להשתמש באפליקציה בזמן נהיגה. הסריקה הרציפה מיועדת לנוסע בלבד.\n\n'
+                '• אין להתעמת עם נהג או לנסות לעצור רכב. אם נתקלת ברכב חשוד, דווח למוקד 100.\n\n'
+                '• המידע מגיע ממאגרי משרד התחבורה ומאתר משטרת ישראל, ואינו מהווה אישור לכך שרכב גנוב או לא. '
+                'המאגרים מתעדכנים מדי יום, וזיהוי המספר מהמצלמה עלול לטעות. תמיד ודא שהמספר נקרא נכון.\n\n'
+                '• שתף דיווחים ותמונות רק עם המשטרה. אין לפרסם מספרי רכב, תמונות או חשדות ברשתות החברתיות.\n\n'
+                '• רק מספר הרישוי נשלח לבדיקה. ההיסטוריה ותמונות הסריקה נשמרות במכשיר בלבד.\n\n'
+                '• האפליקציה אינה קשורה למשטרת ישראל, למשרד התחבורה או לכל גוף ממשלתי אחר. '
+                'מקורות המידע: מאגרי משרד התחבורה באתר data.gov.il, '
+                'ושירות "רכב גנוב" של משטרת ישראל באתר gov.il.',
               ),
-              Wrap(
-                children: [
-                  for (final doc in [LegalDoc.terms, LegalDoc.privacy])
-                    TextButton(
-                      onPressed: () => Navigator.push(
-                        context,
-                        MaterialPageRoute<void>(
-                          builder: (_) => LegalDocScreen(doc),
+              if (firstRun) ...[
+                const SizedBox(height: 16),
+                const Text(
+                  'בלחיצה על "מסכים" אתה מאשר את תנאי השימוש ואת מדיניות הפרטיות.',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Wrap(
+                  children: [
+                    for (final doc in [LegalDoc.terms, LegalDoc.privacy])
+                      TextButton(
+                        onPressed: () => Navigator.push(
+                          context,
+                          MaterialPageRoute<void>(
+                            builder: (_) => LegalDocScreen(doc),
+                          ),
                         ),
+                        child: Text(doc.title),
                       ),
-                      child: Text(doc.title),
-                    ),
-                ],
-              ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(firstRun ? 'מסכים' : 'סגור'),
+          ),
+        ],
       ),
-      actions: [
-        FilledButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(firstRun ? 'מסכים' : 'סגור'),
-        ),
-      ],
     ),
   );
 
@@ -111,11 +115,12 @@ class _HomeScreenState extends State<HomeScreen> {
       Navigator.push(context, MaterialPageRoute<void>(builder: (_) => screen));
 
   void _checkManual() {
-    final plate = normalizePlate(_plateController.text);
-    if (!isValidPlate(plate)) {
-      setState(() => _plateError = 'יש להזין 4 עד 8 ספרות');
+    final error = plateNumberError(_plateController.text);
+    if (error != null) {
+      setState(() => _plateError = error);
       return;
     }
+    final plate = normalizePlate(_plateController.text);
     setState(() => _plateError = null);
     FocusScope.of(context).unfocus();
     _open(ResultScreen(services: widget.services, plate: plate));
@@ -170,21 +175,16 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: [
                     Text('הקלדת מספר', style: theme.textTheme.titleMedium),
                     const SizedBox(height: 12),
-                    TextField(
+                    PlateNumberField(
                       controller: _plateController,
-                      keyboardType: TextInputType.number,
-                      textDirection: TextDirection.ltr,
-                      textAlign: TextAlign.center,
                       style: theme.textTheme.headlineSmall,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.digitsOnly,
-                        LengthLimitingTextInputFormatter(8),
-                      ],
-                      decoration: InputDecoration(
-                        hintText: '1234567',
-                        errorText: _plateError,
-                        border: const OutlineInputBorder(),
-                      ),
+                      hintText: '1234567',
+                      errorText: _plateError,
+                      onChanged: (_) {
+                        if (_plateError != null) {
+                          setState(() => _plateError = null);
+                        }
+                      },
                       onSubmitted: (_) => _checkManual(),
                     ),
                     const SizedBox(height: 12),

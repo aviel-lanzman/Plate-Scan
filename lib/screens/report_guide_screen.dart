@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../services/report_service.dart';
+import '../widgets/result/report_card.dart';
 
 /// How to report a finding to the police, and how to keep a record of it.
 class ReportGuideScreen extends StatelessWidget {
@@ -30,7 +31,11 @@ class ReportGuideScreen extends StatelessWidget {
                 backgroundColor: Colors.red.shade700,
                 foregroundColor: Colors.white,
               ),
-              onPressed: report.callPolice,
+              onPressed: () => launchOrExplain(
+                context,
+                report.callPolice,
+                'לא ניתן לפתוח את החייגן. חייג 100 ידנית.',
+              ),
               icon: const Icon(Icons.phone),
               label: const Text('התקשר 100'),
             ),
@@ -53,7 +58,11 @@ class ReportGuideScreen extends StatelessWidget {
               'נדרשת כניסה עם ההזדהות הלאומית. התלונה לא מתאימה למקרה חירום.',
             ],
             action: OutlinedButton.icon(
-              onPressed: report.openOnlineComplaint,
+              onPressed: () => launchOrExplain(
+                context,
+                report.openOnlineComplaint,
+                'לא ניתן לפתוח את הדפדפן. היכנס ידנית לאתר המשטרה.',
+              ),
               icon: const Icon(Icons.open_in_new),
               label: const Text('תלונה מקוונת באתר המשטרה'),
             ),

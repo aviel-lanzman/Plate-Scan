@@ -40,7 +40,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
     );
     if (confirmed != true) return;
     await widget.services.history.clear();
-    _reload();
+    if (mounted) _reload();
   }
 
   Future<void> _open(VehicleResult entry) async {
@@ -106,6 +106,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 status: e.status,
                 stolen: e.stolenCheck,
                 summary: e.info?.summary,
+                partial: e.partial,
                 time: formatDateTime(e.checkedAt),
                 onTap: () => _open(e),
               );

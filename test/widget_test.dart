@@ -9,12 +9,15 @@ import 'package:http/testing.dart';
 import 'package:plate_scan/app_services.dart';
 import 'package:plate_scan/main.dart';
 import 'package:plate_scan/models/vehicle_result.dart';
+import 'package:plate_scan/screens/home_screen.dart';
 import 'package:plate_scan/screens/history_screen.dart';
 import 'package:plate_scan/screens/legal_doc_screen.dart';
 import 'package:plate_scan/screens/report_guide_screen.dart';
+import 'package:plate_scan/screens/stolen_check_screen.dart';
 import 'package:plate_scan/screens/result_screen.dart';
 import 'package:plate_scan/services/history_store.dart';
 import 'package:plate_scan/services/vehicle_lookup_service.dart';
+import 'package:plate_scan/widgets/plate_result_tile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 AppServices _services() => AppServices(
@@ -23,14 +26,14 @@ AppServices _services() => AppServices(
       final id = request.url.queryParameters['resource_id'];
       final records = id == '851ecab1-0622-4dbe-a6c7-f950cf82abf9'
           ? [
-              {
+              <String, Object?>{
                 'mispar_rechev': 7735636,
                 'tozeret_nm': 'סיאט ספרד',
                 'kinuy_mishari': 'TOLEDO',
                 'bitul_dt': '2026-10-15',
               },
             ]
-          : [];
+          : <Object?>[];
       return http.Response.bytes(
         utf8.encode(
           jsonEncode({
@@ -171,6 +174,156 @@ void main() {
     expect(find.text('מה לא לעשות'), findsOneWidget);
   });
 
+  testWidgets('editing the plate keeps the route and looks up the new plate', (
+    tester,
+  ) async {
+    final observer = _RouteCounter();
+    final services = _services();
+    await tester.pumpWidget(
+      MaterialApp(
+        locale: const Locale('he', 'IL'),
+        supportedLocales: const [Locale('he', 'IL')],
+        localizationsDelegates: GlobalMaterialLocalizations.delegates,
+        navigatorObservers: [observer],
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) =>
+                    ResultScreen(services: services, plate: '7735636'),
+              ),
+            ),
+            child: const Text('open'),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('77-356-36'), findsOneWidget);
+    final pushes = observer.pushes;
+
+    await tester.tap(find.byTooltip('תיקון מספר'));
+    await tester.pumpAndSettle();
+    // An invalid number keeps the dialog open and says why.
+    await tester.enterText(find.byType(TextField), '123');
+    await tester.tap(find.text('בדוק'));
+    await tester.pumpAndSettle();
+    expect(find.text('יש להזין 4 עד 8 ספרות'), findsOneWidget);
+    expect(find.text('תיקון מספר'), findsWidgets);
+
+    await tester.enterText(find.byType(TextField), '1234567');
+    await tester.tap(find.text('בדוק'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('12-345-67'), findsOneWidget);
+    expect(find.text('77-356-36'), findsNothing);
+    expect(find.text('ירד מהכביש'), findsOneWidget);
+    // Same route: nothing was replaced, pushed or popped.
+    expect(observer.pushes, pushes);
+    expect(observer.replaces, 0);
+    expect(observer.pops, 0);
+  });
+
+  testWidgets('Back does not accept the first-run terms', (tester) async {
+    await tester.pumpWidget(PlateScanApp(services: _services()));
+    await tester.pumpAndSettle();
+    expect(find.text('לפני שמתחילים'), findsOneWidget);
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+
+    expect(find.text('לפני שמתחילים'), findsOneWidget);
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('disclaimer_accepted_v2'), isNull);
+  });
+
+  testWidgets('home explains an invalid typed number', (tester) async {
+    SharedPreferences.setMockInitialValues({'disclaimer_accepted_v2': true});
+    await tester.pumpWidget(_wrap(HomeScreen(services: _services())));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), '123');
+    await tester.tap(find.text('בדוק'));
+    await tester.pumpAndSettle();
+    expect(find.text('יש להזין 4 עד 8 ספרות'), findsOneWidget);
+    expect(find.byType(ResultScreen), findsNothing);
+  });
+
+  testWidgets('a partial result says a source did not answer', (tester) async {
+    final partial = VehicleResult(
+      plate: '7735636',
+      status: PlateStatus.active,
+      checkedAt: DateTime(2026),
+      partial: true,
+    );
+    await tester.pumpWidget(
+      _wrap(
+        ResultScreen(services: _services(), plate: '7735636', initial: partial),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('אחד ממקורות המידע לא ענה'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, 'בדוק שוב'), findsOneWidget);
+  });
+
+  testWidgets('a partial result fits at 200% text size', (tester) async {
+    tester.view
+      ..physicalSize = const Size(360 * 3, 640 * 3)
+      ..devicePixelRatio = 3;
+    tester.platformDispatcher.textScaleFactorTestValue = 2;
+    addTearDown(tester.view.reset);
+    addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
+
+    final partial = VehicleResult(
+      plate: '7735636',
+      status: PlateStatus.active,
+      checkedAt: DateTime(2026),
+      partial: true,
+    );
+    await tester.pumpWidget(
+      _wrap(
+        Scaffold(
+          body: PlateResultTile(
+            plate: '7735636',
+            status: partial.status,
+            partial: true,
+            time: '10:00',
+            onTap: () {},
+          ),
+        ),
+      ),
+    );
+    expect(find.byIcon(Icons.info_outline), findsOneWidget);
+    await tester.pumpWidget(
+      _wrap(
+        ResultScreen(services: _services(), plate: '7735636', initial: partial),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.textContaining('אחד ממקורות המידע לא ענה'), findsOneWidget);
+  });
+
+  test('Back leaves the stolen check from the police page itself', () {
+    expect(isCheckPagePath('/apps/police/stolencar/'), isTrue);
+    expect(isCheckPagePath('/apps/police/stolencar'), isTrue);
+    expect(isCheckPagePath('/Apps/Police/StolenCar/results'), isTrue);
+    expect(isCheckPagePath('/he/departments/israel_police'), isFalse);
+    expect(isCheckPagePath('/apps/police/stolencars'), isFalse);
+  });
+
+  test('the stolen-check page only navigates within gov.il over https', () {
+    expect(
+      isAllowedMainFrameUrl('https://www.gov.il/apps/police/stolencar/'),
+      isTrue,
+    );
+    expect(isAllowedMainFrameUrl('https://gov.il/he'), isTrue);
+    expect(isAllowedMainFrameUrl('https://evil.example/gov.il'), isFalse);
+    expect(isAllowedMainFrameUrl('https://notgov.il/'), isFalse);
+    expect(isAllowedMainFrameUrl('http://www.gov.il/'), isFalse);
+    expect(isAllowedMainFrameUrl('intent://x'), isFalse);
+  });
+
   test('a failed save does not throw', () async {
     await _BrokenHistory().add(
       VehicleResult(
@@ -180,6 +333,27 @@ void main() {
       ),
     );
   });
+}
+
+/// Counts page routes only, not the dialogs on top of them.
+class _RouteCounter extends NavigatorObserver {
+  int pushes = 0;
+  int pops = 0;
+  int replaces = 0;
+
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is PageRoute) pushes++;
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is PageRoute) pops++;
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) =>
+      replaces++;
 }
 
 class _BrokenHistory extends HistoryStore {

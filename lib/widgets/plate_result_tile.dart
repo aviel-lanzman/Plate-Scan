@@ -13,6 +13,7 @@ class PlateResultTile extends StatelessWidget {
     required this.status,
     this.stolen,
     this.summary,
+    this.partial = false,
     required this.time,
     required this.onTap,
   });
@@ -23,6 +24,9 @@ class PlateResultTile extends StatelessWidget {
   final PlateStatus? status;
   final StolenCheckOutcome? stolen;
   final String? summary;
+
+  /// One data source did not answer, so the status may be incomplete.
+  final bool partial;
   final String time;
   final VoidCallback onTap;
 
@@ -38,6 +42,15 @@ class PlateResultTile extends StatelessWidget {
         Row(
           children: [
             Flexible(child: StatusLabel(status)),
+            if (partial) ...[
+              const SizedBox(width: 6),
+              Icon(
+                Icons.info_outline,
+                color: theme.colorScheme.onSurfaceVariant,
+                semanticLabel: 'תוצאה חלקית, אחד המקורות לא ענה',
+                size: 16,
+              ),
+            ],
             if (stolen != null) ...[
               const SizedBox(width: 8),
               Icon(

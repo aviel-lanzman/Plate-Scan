@@ -1,16 +1,20 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 
 import '../app_services.dart';
 import '../models/vehicle_result.dart';
 import '../services/plate_parser.dart';
 import '../services/report_service.dart';
-import '../util/format.dart';
+import '../widgets/photo_viewer.dart';
 import '../widgets/plate_badge.dart';
-import '../widgets/status_style.dart';
+import '../widgets/plate_number_field.dart';
+import '../widgets/result/report_card.dart';
+import '../widgets/result/status_card.dart';
+import '../widgets/result/stolen_card.dart';
+import '../widgets/result/vehicle_card.dart';
 import 'report_guide_screen.dart';
 import 'stolen_check_screen.dart';
 
@@ -27,7 +31,8 @@ class ResultScreen extends StatefulWidget {
 
   final AppServices services;
 
-  /// Digits only.
+  /// Digits only. The user can correct it on this screen; the photos and
+  /// [seenAt] still apply then, since it is the same car.
   final String plate;
 
   /// An existing result (from history or continuous mode) to show instead of
@@ -49,16 +54,17 @@ class ResultScreen extends StatefulWidget {
 }
 
 class _ResultScreenState extends State<ResultScreen> {
+  late String _plate = widget.plate;
   VehicleResult? _result;
   bool _sharing = false;
   late final _photos = [...widget.photos];
-  bool _photosHandedOff = false;
+
+  /// Tells a lookup that finished late that the plate was edited meanwhile.
+  int _lookupId = 0;
 
   @override
   void dispose() {
-    if (widget.ownsPhotos && !_photosHandedOff) {
-      widget.services.photos.delete(_photos);
-    }
+    if (widget.ownsPhotos) unawaited(widget.services.photos.delete(_photos));
     super.dispose();
   }
 
@@ -66,20 +72,18 @@ class _ResultScreenState extends State<ResultScreen> {
   void initState() {
     super.initState();
     _result = widget.initial;
-    if (_result == null) _lookup();
+    if (_result == null) unawaited(_lookup());
   }
 
   Future<void> _lookup({bool refresh = false}) async {
+    final id = ++_lookupId;
     final previous = _result;
     setState(() => _result = null);
-    var result = await widget.services.lookup.lookup(
-      widget.plate,
-      refresh: refresh,
-    );
+    var result = await widget.services.lookup.lookup(_plate, refresh: refresh);
     if (previous?.stolenCheck case final stolen?) {
       result = result.withStolenCheck(stolen);
     }
-    if (!mounted) return;
+    if (!mounted || id != _lookupId) return;
     setState(() => _result = result);
     if (result.status != PlateStatus.error) {
       await widget.services.history.add(result);
@@ -89,7 +93,7 @@ class _ResultScreenState extends State<ResultScreen> {
   Future<void> _checkStolen() async {
     final outcome = await Navigator.push<StolenCheckOutcome>(
       context,
-      MaterialPageRoute(builder: (_) => StolenCheckScreen(plate: widget.plate)),
+      MaterialPageRoute(builder: (_) => StolenCheckScreen(plate: _plate)),
     );
     final result = _result;
     if (outcome == null || result == null || !mounted) return;
@@ -98,26 +102,39 @@ class _ResultScreenState extends State<ResultScreen> {
     await widget.services.history.add(updated);
   }
 
-  Future<void> _callPolice() async {
-    final ok = await widget.services.report.callPolice();
-    if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('לא ניתן לפתוח את החייגן. חייג 100 ידנית.'),
-        ),
-      );
-    }
-  }
+  void _say(String message) =>
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
 
-  /// Builds the report with the current location, then hands it to [send].
+  Future<void> _callPolice() => launchOrExplain(
+    context,
+    widget.services.report.callPolice,
+    'לא ניתן לפתוח את החייגן. חייג 100 ידנית.',
+  );
+
+  Future<void> _openComplaint() => launchOrExplain(
+    context,
+    widget.services.report.openOnlineComplaint,
+    'לא ניתן לפתוח את הדפדפן. היכנס ידנית לאתר המשטרה.',
+  );
+
+  /// Builds the report with the current location, then hands it to [send],
+  /// which says whether it went through. Failures and a missing location are
+  /// reported to the user.
   Future<void> _report(
-    Future<void> Function(VehicleResult result, Position? position) send,
+    Future<bool> Function(VehicleResult result, Position? position) send,
   ) async {
     final result = _result;
     if (result == null || _sharing) return;
     setState(() => _sharing = true);
     try {
-      await send(result, await widget.services.report.currentPosition());
+      final position = await widget.services.report.currentPosition();
+      final sent = await send(result, position);
+      if (sent && position == null && mounted) {
+        _say('המיקום לא צורף לדיווח (שירותי המיקום כבויים או שאין הרשאה).');
+      }
+    } on Object {
+      if (mounted) _say('הפעולה נכשלה. נסה שוב.');
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
@@ -138,6 +155,7 @@ class _ResultScreenState extends State<ResultScreen> {
       photoCount: photos.length,
     );
     await widget.services.report.share(text, photos: photos);
+    return true;
   });
 
   // SMS cannot carry the photos.
@@ -151,67 +169,31 @@ class _ResultScreenState extends State<ResultScreen> {
     );
     final ok = await widget.services.report.smsPolice(text);
     if (!ok && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'לא ניתן לפתוח את אפליקציית ההודעות. שלח SMS ל-052-2020100.',
-          ),
-        ),
-      );
+      _say('לא ניתן לפתוח את אפליקציית ההודעות. שלח SMS ל-052-2020100.');
     }
+    return ok;
   });
 
+  /// Corrects the plate in place and looks the new number up. The screen
+  /// stays, so a scanner waiting underneath is not resumed, and the photos
+  /// still belong to this screen.
   Future<void> _editPlate() async {
     final plate = await showDialog<String>(
       context: context,
-      builder: (_) => _PlateEditDialog(initial: widget.plate),
+      builder: (_) => _PlateEditDialog(initial: _plate),
     );
-    if (plate == null || !isValidPlate(plate) || !mounted) return;
-    _photosHandedOff = true;
-    await Navigator.pushReplacement(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => ResultScreen(
-          services: widget.services,
-          plate: plate,
-          // Same car, so the photos still apply after a typo fix.
-          photos: _photos,
-          ownsPhotos: widget.ownsPhotos,
-          seenAt: widget.seenAt,
-        ),
-      ),
-    );
+    if (plate == null || plate == _plate || !mounted) return;
+    setState(() {
+      _plate = plate;
+      _result = null;
+    });
+    await _lookup();
   }
 
   void _removePhoto(String path) {
     setState(() => _photos.remove(path));
-    if (widget.ownsPhotos) widget.services.photos.delete([path]);
+    if (widget.ownsPhotos) unawaited(widget.services.photos.delete([path]));
   }
-
-  Future<void> _viewPhoto(String path) => showDialog<void>(
-    context: context,
-    builder: (context) => Dialog.fullscreen(
-      backgroundColor: Colors.black,
-      child: Stack(
-        children: [
-          Positioned.fill(
-            child: InteractiveViewer(
-              maxScale: 6,
-              child: Image.file(File(path), fit: BoxFit.contain),
-            ),
-          ),
-          SafeArea(
-            child: IconButton(
-              tooltip: 'סגור',
-              color: Colors.white,
-              icon: const Icon(Icons.close),
-              onPressed: () => Navigator.pop(context),
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
 
   @override
   Widget build(BuildContext context) {
@@ -228,14 +210,16 @@ class _ResultScreenState extends State<ResultScreen> {
           IconButton(
             tooltip: 'בדוק שוב',
             icon: const Icon(Icons.refresh),
-            onPressed: result == null ? null : () => _lookup(refresh: true),
+            onPressed: result == null
+                ? null
+                : () => unawaited(_lookup(refresh: true)),
           ),
         ],
       ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Center(child: PlateBadge(widget.plate, fontSize: 36)),
+          Center(child: PlateBadge(_plate, fontSize: 36)),
           const SizedBox(height: 16),
           if (result == null)
             const Card(
@@ -251,26 +235,31 @@ class _ResultScreenState extends State<ResultScreen> {
               ),
             )
           else ...[
-            _StatusCard(result, onRetry: () => _lookup(refresh: true)),
+            StatusCard(
+              result,
+              onRetry: () => unawaited(_lookup(refresh: true)),
+            ),
             if (result.info case final info? when info.summary.isNotEmpty)
-              _VehicleCard(info),
-            _StolenCard(outcome: result.stolenCheck, onCheck: _checkStolen),
-            _ReportCard(
+              VehicleCard(info),
+            StolenCard(outcome: result.stolenCheck, onCheck: _checkStolen),
+            ReportCard(
               urgent: result.needsReport,
               sharing: _sharing,
               photos: _photos,
               onCall: _callPolice,
               onShare: _shareReport,
               onSms: _smsPolice,
-              onComplaint: widget.services.report.openOnlineComplaint,
-              onGuide: () => Navigator.push(
-                context,
-                MaterialPageRoute<void>(
-                  builder: (_) =>
-                      ReportGuideScreen(report: widget.services.report),
+              onComplaint: _openComplaint,
+              onGuide: () => unawaited(
+                Navigator.push(
+                  context,
+                  MaterialPageRoute<void>(
+                    builder: (_) =>
+                        ReportGuideScreen(report: widget.services.report),
+                  ),
                 ),
               ),
-              onViewPhoto: _viewPhoto,
+              onViewPhoto: (path) => unawaited(showPhotoViewer(context, path)),
               onRemovePhoto: _removePhoto,
             ),
             const SizedBox(height: 8),
@@ -287,339 +276,7 @@ class _ResultScreenState extends State<ResultScreen> {
   }
 }
 
-class _StatusCard extends StatelessWidget {
-  const _StatusCard(this.result, {required this.onRetry});
-
-  final VehicleResult result;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    final status = result.status;
-    final info = result.info;
-    const white = TextStyle(color: Colors.white);
-    return Card(
-      color: status.color,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(status.icon, color: Colors.white, size: 36),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    status.label,
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(status.description, style: white),
-            if (status == PlateStatus.offRoad && info?.cancelledOn != null)
-              Text(
-                'תאריך ביטול: ${formatIsoDate(info!.cancelledOn!)}',
-                style: white,
-              ),
-            if (info?.licenseValidUntil case final until?)
-              Text('תוקף רישיון הרכב: ${formatIsoDate(until)}', style: white),
-            Text('נבדק: ${formatDateTime(result.checkedAt)}', style: white),
-            if (status == PlateStatus.error)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                  ),
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('נסה שוב'),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _VehicleCard extends StatelessWidget {
-  const _VehicleCard(this.info);
-
-  final VehicleInfo info;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('ודא שהרכב שלפניך הוא:', style: theme.textTheme.titleSmall),
-            const SizedBox(height: 4),
-            Text(info.summary, style: theme.textTheme.headlineSmall),
-            if (info.vehicleType case final type?) Text(type),
-            const SizedBox(height: 8),
-            Text(
-              'אם הרכב שאתה רואה שונה, ייתכן שהמספר נקרא לא נכון או שהלוחית מזויפת.',
-              style: theme.textTheme.bodySmall,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _StolenCard extends StatelessWidget {
-  const _StolenCard({required this.outcome, required this.onCheck});
-
-  final StolenCheckOutcome? outcome;
-  final VoidCallback onCheck;
-
-  @override
-  Widget build(BuildContext context) {
-    final outcome = this.outcome;
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text('בדיקת גניבה', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 4),
-            if (outcome == null)
-              const Text(
-                'הבדיקה נעשית באתר הרשמי של משטרת ישראל. המספר ימולא אוטומטית, ואתה לוחץ "בדוק רכב".',
-              )
-            else
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Icon(
-                  outcome.icon,
-                  color: outcome.textColor(context),
-                  size: 32,
-                ),
-                title: Text(
-                  outcome.label,
-                  style: TextStyle(
-                    color: outcome.textColor(context),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: onCheck,
-              icon: const Icon(Icons.local_police),
-              label: Text(outcome == null ? 'בדוק באתר המשטרה' : 'בדוק שוב'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReportCard extends StatelessWidget {
-  const _ReportCard({
-    required this.urgent,
-    required this.sharing,
-    required this.photos,
-    required this.onCall,
-    required this.onShare,
-    required this.onSms,
-    required this.onComplaint,
-    required this.onGuide,
-    required this.onViewPhoto,
-    required this.onRemovePhoto,
-  });
-
-  final bool urgent;
-  final bool sharing;
-  final List<String> photos;
-  final VoidCallback onCall;
-  final VoidCallback onShare;
-  final VoidCallback onSms;
-  final VoidCallback onComplaint;
-  final VoidCallback onGuide;
-  final ValueChanged<String> onViewPhoto;
-  final ValueChanged<String> onRemovePhoto;
-
-  String get _shareLabel => switch (photos.length) {
-    0 => 'שתף פרטי דיווח (כולל מיקום)',
-    1 => 'שתף דיווח עם מיקום ותמונה',
-    final n => 'שתף דיווח עם מיקום ו-$n תמונות',
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    final red = Colors.red.shade700;
-    return Card(
-      shape: urgent
-          ? RoundedRectangleBorder(
-              side: BorderSide(color: red, width: 2),
-              borderRadius: BorderRadius.circular(12),
-            )
-          : null,
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              'דיווח למשטרה',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              urgent
-                  ? 'אם הרכב לפניך עכשיו, חייג 100 ומסור את המספר, המיקום, כיוון הנסיעה ותיאור הרכב. אל תתעמת עם הנהג ואל תרדוף אחריו.'
-                  : 'אם יש לך חשד לגבי הרכב, אפשר לדווח למוקד 100.',
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              // White on red in both themes; the default dark-theme
-              // foreground is a dark blue that is unreadable on red.
-              style: FilledButton.styleFrom(
-                backgroundColor: red,
-                foregroundColor: Colors.white,
-              ),
-              onPressed: onCall,
-              icon: const Icon(Icons.phone),
-              label: const Text('התקשר 100'),
-            ),
-            if (photos.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                'תמונות מהסריקה',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final (i, path) in photos.indexed)
-                    _PhotoThumb(
-                      path,
-                      index: i + 1,
-                      onTap: () => onViewPhoto(path),
-                      onRemove: () => onRemovePhoto(path),
-                    ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: sharing ? null : onShare,
-              icon: sharing
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.share),
-              label: Text(_shareLabel),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'לתיעוד, לחץ "שתף" ובחר בוואטסאפ את הצ\'אט עם עצמך. '
-              'למשטרה אין קו וואטסאפ לדיווחים, אבל התיעוד ישמש אותך אם המשטרה תבקש פרטים'
-              '${photos.isEmpty ? '' : ' או תמונות'}, או לתלונה מקוונת. אל תפרסם אותו ברשתות החברתיות.'
-              '${photos.isEmpty ? '' : ' טקסט הדיווח מועתק גם ללוח, למקרה שהאפליקציה שתבחר לא תצרף אותו לתמונות.'}',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-            const SizedBox(height: 8),
-            TextButton.icon(
-              onPressed: onGuide,
-              icon: const Icon(Icons.help_outline),
-              label: const Text('איך מדווחים למשטרה?'),
-            ),
-            TextButton.icon(
-              onPressed: onComplaint,
-              icon: const Icon(Icons.open_in_new),
-              label: const Text('תלונה מקוונת באתר המשטרה (לא לחירום)'),
-            ),
-            TextButton.icon(
-              onPressed: sharing ? null : onSms,
-              icon: const Icon(Icons.sms_outlined),
-              label: const Text('SMS למשטרה, לבעלי מוגבלות שמיעה או דיבור'),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoThumb extends StatelessWidget {
-  const _PhotoThumb(
-    this.path, {
-    required this.index,
-    required this.onTap,
-    required this.onRemove,
-  });
-
-  final String path;
-  final int index;
-  final VoidCallback onTap;
-  final VoidCallback onRemove;
-
-  // Three fit side by side in the report card on a 360dp-wide phone.
-  static const _size = 88.0;
-
-  @override
-  Widget build(BuildContext context) {
-    final pixels = (_size * MediaQuery.devicePixelRatioOf(context)).round();
-    return SizedBox.square(
-      dimension: _size,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Semantics(
-            button: true,
-            label: 'תמונה $index, הקש להגדלה',
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: InkWell(
-                onTap: onTap,
-                child: Image.file(
-                  File(path),
-                  fit: BoxFit.cover,
-                  cacheWidth: pixels,
-                  errorBuilder: (_, _, _) => const ColoredBox(
-                    color: Colors.black12,
-                    child: Icon(Icons.broken_image),
-                  ),
-                ),
-              ),
-            ),
-          ),
-          PositionedDirectional(
-            top: 0,
-            end: 0,
-            child: IconButton.filledTonal(
-              tooltip: 'הסר תמונה $index מהדיווח',
-              visualDensity: VisualDensity.compact,
-              iconSize: 18,
-              icon: const Icon(Icons.close),
-              onPressed: onRemove,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
+/// Asks for a corrected number and stays open until it is a valid plate.
 class _PlateEditDialog extends StatefulWidget {
   const _PlateEditDialog({required this.initial});
 
@@ -631,6 +288,7 @@ class _PlateEditDialog extends StatefulWidget {
 
 class _PlateEditDialogState extends State<_PlateEditDialog> {
   late final _controller = TextEditingController(text: widget.initial);
+  String? _error;
 
   @override
   void dispose() {
@@ -638,29 +296,34 @@ class _PlateEditDialogState extends State<_PlateEditDialog> {
     super.dispose();
   }
 
+  void _submit() {
+    final error = plateNumberError(_controller.text);
+    if (error != null) {
+      setState(() => _error = error);
+      return;
+    }
+    Navigator.pop(context, normalizePlate(_controller.text));
+  }
+
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('תיקון מספר'),
-      content: TextField(
+      content: PlateNumberField(
         controller: _controller,
         autofocus: true,
-        keyboardType: TextInputType.number,
-        textDirection: TextDirection.ltr,
-        inputFormatters: [
-          FilteringTextInputFormatter.digitsOnly,
-          LengthLimitingTextInputFormatter(8),
-        ],
+        errorText: _error,
+        onChanged: (_) {
+          if (_error != null) setState(() => _error = null);
+        },
+        onSubmitted: (_) => _submit(),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
           child: const Text('ביטול'),
         ),
-        FilledButton(
-          onPressed: () => Navigator.pop(context, _controller.text),
-          child: const Text('בדוק'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('בדוק')),
       ],
     );
   }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -34,7 +36,7 @@ class _LegalDocScreenState extends State<LegalDocScreen> {
         onNavigationRequest: (request) {
           final uri = Uri.parse(request.url);
           if (uri.scheme == 'file') return NavigationDecision.navigate;
-          launchUrl(uri, mode: LaunchMode.externalApplication);
+          unawaited(launchUrl(uri, mode: LaunchMode.externalApplication));
           return NavigationDecision.prevent;
         },
       ),
