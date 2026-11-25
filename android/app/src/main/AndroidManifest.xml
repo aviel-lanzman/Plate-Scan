@@ -10,10 +10,15 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+    <!-- No backup: the history must stay on this device and go away with the
+         app, as the privacy policy promises. -->
     <application
         android:label="@string/app_name"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        tools:targetApi="31">
         <activity
             android:name=".MainActivity"
             android:exported="true"
