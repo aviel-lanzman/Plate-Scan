@@ -1,15 +1,16 @@
+import 'dart:async';
 import 'dart:io';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 
 import '../app_services.dart';
-import '../services/plate_camera.dart';
 import '../services/plate_parser.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/plate_badge.dart';
+import '../widgets/plate_number_field.dart';
+import 'plate_camera_host.dart';
 import 'result_screen.dart';
 
 /// Point-and-shoot: scans until one plate is confirmed, then lets the user
@@ -25,8 +26,7 @@ class SingleScanScreen extends StatefulWidget {
 }
 
 class _SingleScanScreenState extends State<SingleScanScreen>
-    with WidgetsBindingObserver {
-  final _camera = PlateCamera();
+    with WidgetsBindingObserver, PlateCameraHost<SingleScanScreen> {
   final _voter = PlateVoter();
   final _plateController = TextEditingController();
   String? _confirmed;
@@ -35,54 +35,20 @@ class _SingleScanScreenState extends State<SingleScanScreen>
   bool _photosHandedOff = false;
   String? _reading;
   final _rejected = <String>{};
-  String? _error;
+  String? _plateError;
 
   @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _start();
-  }
+  bool get wantsCamera => _confirmed == null;
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _camera.dispose();
     _plateController.dispose();
     if (!_photosHandedOff) _discardPhotos();
     super.dispose();
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The camera permission dialog also makes the app inactive, so only
-    // release a camera that has finished initializing.
-    if (state == AppLifecycleState.inactive && _camera.isRunning) {
-      _camera.stop().then((_) {
-        if (mounted) setState(() {});
-      });
-    } else if (state == AppLifecycleState.resumed &&
-        _camera.controller == null &&
-        _confirmed == null) {
-      _start();
-    }
-  }
-
-  Future<void> _start() async {
-    try {
-      await _camera.start(_onCandidates);
-      if (mounted) setState(() => _error = null);
-    } on CameraException catch (e) {
-      if (!mounted) return;
-      setState(
-        () => _error = e.code == 'CameraAccessDenied'
-            ? 'אין הרשאה למצלמה. אפשר אותה בהגדרות המכשיר.'
-            : 'שגיאת מצלמה: ${e.description ?? e.code}',
-      );
-    }
-  }
-
-  void _onCandidates(List<String> candidates) {
+  void onCameraCandidates(List<String> candidates) {
     if (!mounted || _confirmed != null) return;
     final confirmed = _voter.add(
       candidates.where((p) => !_rejected.contains(p)),
@@ -101,7 +67,7 @@ class _SingleScanScreenState extends State<SingleScanScreen>
       }
       return;
     }
-    HapticFeedback.mediumImpact();
+    unawaited(HapticFeedback.mediumImpact());
     final plate = confirmed.first;
     _announce('זוהה מספר ${_spoken(plate)}. ודא שהוא נכון ולחץ בדוק.');
     _freeze(plate);
@@ -119,18 +85,18 @@ class _SingleScanScreenState extends State<SingleScanScreen>
   /// Stops scanning on [plate] and saves the frames it was read in.
   void _freeze(String plate) {
     // Grab the frames before stop() releases them.
-    _photos = widget.services.photos.save(plate, _camera.framesWith(plate));
+    _photos = widget.services.photos.save(plate, camera.framesWith(plate));
     _seenAt = DateTime.now();
     setState(() => _confirmed = plate);
-    _camera.stop();
+    unawaited(camera.stop());
   }
 
   /// The user says the reading is right: check it straight away.
   void _acceptReading(String plate) {
-    HapticFeedback.mediumImpact();
+    unawaited(HapticFeedback.mediumImpact());
     _freeze(plate);
     _plateController.text = plate;
-    _check();
+    unawaited(_check());
   }
 
   /// The user says [plate] is a misread: ignore it until they leave.
@@ -141,7 +107,8 @@ class _SingleScanScreenState extends State<SingleScanScreen>
   }
 
   void _discardPhotos() {
-    _photos?.then(widget.services.photos.delete);
+    final photos = _photos;
+    if (photos != null) unawaited(photos.then(widget.services.photos.delete));
     _photos = null;
   }
 
@@ -154,28 +121,35 @@ class _SingleScanScreenState extends State<SingleScanScreen>
       _confirmed = null;
       _reading = null;
     });
-    _start();
+    unawaited(startCamera());
   }
 
   Future<void> _check() async {
+    if (_photosHandedOff) return;
+    final error = plateNumberError(_plateController.text);
+    if (error != null) {
+      setState(() => _plateError = error);
+      return;
+    }
     final plate = normalizePlate(_plateController.text);
-    if (!isValidPlate(plate) || _photosHandedOff) return;
     _photosHandedOff = true;
     // Encoding normally finishes while the user confirms the number.
     final photos = await _photos ?? const <String>[];
     if (!mounted) {
-      widget.services.photos.delete(photos);
+      unawaited(widget.services.photos.delete(photos));
       return;
     }
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute<void>(
-        builder: (_) => ResultScreen(
-          services: widget.services,
-          plate: plate,
-          photos: photos,
-          ownsPhotos: true,
-          seenAt: _seenAt,
+    unawaited(
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => ResultScreen(
+            services: widget.services,
+            plate: plate,
+            photos: photos,
+            ownsPhotos: true,
+            seenAt: _seenAt,
+          ),
         ),
       ),
     );
@@ -190,19 +164,14 @@ class _SingleScanScreenState extends State<SingleScanScreen>
       body: Stack(
         fit: StackFit.expand,
         children: [
-          if (_error case final error?)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(error, textAlign: TextAlign.center),
-              ),
-            )
+          if (cameraError != null)
+            buildCameraError()
           else if (confirmed != null)
             // The camera is off: show the frame the plate was read in, so
             // the number can be compared with it.
             _FrozenFrame(_photos)
           else ...[
-            CameraView(_camera.controller),
+            CameraView(camera.controller),
             const PlateFrame(),
             const Positioned(
               top: 16,
@@ -216,11 +185,15 @@ class _SingleScanScreenState extends State<SingleScanScreen>
               alignment: Alignment.bottomCenter,
               child: _ConfirmCard(
                 controller: _plateController,
+                errorText: _plateError,
+                onChanged: () {
+                  if (_plateError != null) setState(() => _plateError = null);
+                },
                 onCheck: _check,
                 onRescan: _rescan,
               ),
             )
-          else if (reading != null && _error == null)
+          else if (reading != null && cameraError == null)
             Align(
               alignment: Alignment.bottomCenter,
               child: _ReadingCard(
@@ -344,20 +317,25 @@ class _Hint extends StatelessWidget {
 class _ConfirmCard extends StatelessWidget {
   const _ConfirmCard({
     required this.controller,
+    required this.errorText,
+    required this.onChanged,
     required this.onCheck,
     required this.onRescan,
   });
 
   final TextEditingController controller;
+  final String? errorText;
+  final VoidCallback onChanged;
   final VoidCallback onCheck;
   final VoidCallback onRescan;
 
   @override
   Widget build(BuildContext context) {
+    // Scrolls so large text plus the keyboard cannot overflow.
     return SafeArea(
       child: Card(
         margin: const EdgeInsets.all(16),
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -365,17 +343,11 @@ class _ConfirmCard extends StatelessWidget {
             children: [
               const Text('זוהה מספר. ודא שהוא נכון:'),
               const SizedBox(height: 8),
-              TextField(
+              PlateNumberField(
                 controller: controller,
-                keyboardType: TextInputType.number,
-                textDirection: TextDirection.ltr,
-                textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.headlineMedium,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                  LengthLimitingTextInputFormatter(8),
-                ],
-                decoration: const InputDecoration(border: OutlineInputBorder()),
+                errorText: errorText,
+                onChanged: (_) => onChanged(),
                 onSubmitted: (_) => onCheck(),
               ),
               const SizedBox(height: 12),

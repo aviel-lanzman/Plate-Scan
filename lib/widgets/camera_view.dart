@@ -11,9 +11,14 @@ class CameraView extends StatelessWidget {
   Widget build(BuildContext context) {
     final controller = this.controller;
     if (controller == null || !controller.value.isInitialized) {
-      return const ColoredBox(
+      return ColoredBox(
         color: Colors.black,
-        child: Center(child: CircularProgressIndicator()),
+        child: Center(
+          child: Semantics(
+            label: 'מפעיל מצלמה',
+            child: const CircularProgressIndicator(),
+          ),
+        ),
       );
     }
     // previewSize is reported in landscape, so swap it for portrait.

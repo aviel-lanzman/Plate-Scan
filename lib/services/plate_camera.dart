@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
 
@@ -36,8 +37,22 @@ class PlateCamera {
       if (frame.plates.contains(plate)) frame,
   ];
 
+  // start() and stop() run one at a time, in call order. A start right after
+  // a stop then waits for the old controller to be disposed, and two starts
+  // create a single controller.
+  Future<void> _tail = Future.value();
+
+  Future<R> _serial<R>(Future<R> Function() op) {
+    final run = _tail.then((_) => op());
+    _tail = run.then((_) {}, onError: (Object _) {});
+    return run;
+  }
+
   /// Throws [CameraException] (e.g. code `CameraAccessDenied`) on failure.
-  Future<void> start(ValueChanged<List<String>> onCandidates) async {
+  Future<void> start(ValueChanged<List<String>> onCandidates) =>
+      _serial(() => _start(onCandidates));
+
+  Future<void> _start(ValueChanged<List<String>> onCandidates) async {
     _onCandidates = onCandidates;
     if (_controller != null) return;
 
@@ -55,17 +70,17 @@ class PlateCamera {
       await controller.initialize();
       await controller.startImageStream(_onFrame);
     } on Object {
-      // stop() may have already released this controller mid-initialize.
-      if (identical(_controller, controller)) {
-        _controller = null;
-        await controller.dispose();
-      }
+      _controller = null;
+      await controller.dispose();
       rethrow;
     }
   }
 
-  /// Releases the camera; [start] can be called again later.
-  Future<void> stop() async {
+  /// Releases the camera once any start in progress has finished; [start] can
+  /// be called again later.
+  Future<void> stop() => _serial(_stop);
+
+  Future<void> _stop() async {
     final controller = _controller;
     _controller = null;
     _recent.clear();

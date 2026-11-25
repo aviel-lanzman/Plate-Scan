@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
@@ -9,23 +8,40 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../app_services.dart';
 import '../models/vehicle_result.dart';
-import '../services/plate_camera.dart';
+import '../services/report_photos.dart';
 import '../services/plate_parser.dart';
 import '../util/format.dart';
 import '../widgets/camera_view.dart';
 import '../widgets/plate_result_tile.dart';
 import '../widgets/status_style.dart';
+import 'plate_camera_host.dart';
 import 'result_screen.dart';
 
 class _Detection {
-  _Detection(this.plate, this.seenAt, this.photos);
+  _Detection(this.plate, this.seenAt, this.frames);
 
   final String plate;
   final DateTime seenAt;
 
-  /// Paths of the saved frames this plate was read in.
-  final Future<List<String>> photos;
+  /// The frames this plate was read in, held in memory until they are saved
+  /// (the plate raised an alert or the user opened it) or released.
+  List<CapturedFrame>? frames;
+  Future<List<String>>? _photos;
+
+  /// Dropped from the list: its photos are gone and must not be written.
+  bool evicted = false;
   VehicleResult? result;
+
+  /// Writes the held frames to disk once and returns the paths of the saved
+  /// photos. Empty when the frames were released or the detection evicted.
+  Future<List<String>> savePhotos(ReportPhotos photos) {
+    if (evicted) return Future.value(const []);
+    final held = frames;
+    frames = null;
+    return _photos ??= held == null || held.isEmpty
+        ? Future.value(const [])
+        : photos.save(plate, held);
+  }
 }
 
 /// Keeps the camera running, looks up every confirmed plate, and alerts on
@@ -40,12 +56,20 @@ class ContinuousScanScreen extends StatefulWidget {
 }
 
 class _ContinuousScanScreenState extends State<ContinuousScanScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, PlateCameraHost<ContinuousScanScreen> {
   static const _recheckAfter = Duration(minutes: 10);
   static const _maxInFlight = 2;
   static const _maxDetections = 50;
 
-  final _camera = PlateCamera();
+  /// Only this many of the newest detections keep their frames in memory, at
+  /// most [_framesPerDetection] each. A frame is a full NV21 or BGRA camera
+  /// frame (about 1.4 MB at 720p, 3.1 MB at 1080p), so the worst case is
+  /// 6 x 3 = 18 frames (about 25 MB at 720p, 56 MB at 1080p), less when
+  /// detections share frames. An older detection that alerts or is opened
+  /// has no photos.
+  static const _heldDetections = 6;
+  static const _framesPerDetection = 3;
+
   final _voter = PlateVoter();
   final _detections = <_Detection>[];
   final _lastQueued = <String, DateTime>{};
@@ -54,22 +78,23 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
   bool _paused = false;
   _Detection? _alert;
   Timer? _alertTimer;
-  String? _error;
+
+  /// Alerts that arrived while a result screen was open; shown on return.
+  final _held = <_Detection>[];
+
+  @override
+  bool get wantsCamera => !_paused;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WakelockPlus.enable();
-    _start();
+    unawaited(WakelockPlus.enable());
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    WakelockPlus.disable();
+    unawaited(WakelockPlus.disable());
     _alertTimer?.cancel();
-    _camera.dispose();
     for (final detection in _detections) {
       _discardPhotos(detection);
     }
@@ -77,50 +102,24 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // The camera permission dialog also makes the app inactive, so only
-    // release a camera that has finished initializing.
-    if (state == AppLifecycleState.inactive && _camera.isRunning) {
-      _camera.stop().then((_) {
-        if (mounted) setState(() {});
-      });
-    } else if (state == AppLifecycleState.resumed &&
-        _camera.controller == null &&
-        !_paused) {
-      _start();
-    }
-  }
-
-  Future<void> _start() async {
-    try {
-      await _camera.start(_onCandidates);
-      if (mounted) setState(() => _error = null);
-    } on CameraException catch (e) {
-      if (!mounted) return;
-      setState(
-        () => _error = e.code == 'CameraAccessDenied'
-            ? 'אין הרשאה למצלמה. אפשר אותה בהגדרות המכשיר.'
-            : 'שגיאת מצלמה: ${e.description ?? e.code}',
-      );
-    }
-  }
-
-  void _onCandidates(List<String> candidates) {
+  void onCameraCandidates(List<String> candidates) {
     if (!mounted) return;
     final now = DateTime.now();
     for (final plate in _voter.add(candidates)) {
       final last = _lastQueued[plate];
       if (last != null && now.difference(last) < _recheckAfter) continue;
       _lastQueued[plate] = now;
-      final detection = _Detection(
-        plate,
-        now,
-        widget.services.photos.save(plate, _camera.framesWith(plate)),
-      );
+      final detection = _Detection(plate, now, _thin(camera.framesWith(plate)));
       setState(() {
         _detections.insert(0, detection);
+        for (var i = _heldDetections; i < _detections.length; i++) {
+          _detections[i].frames = null;
+        }
         if (_detections.length > _maxDetections) {
-          _discardPhotos(_detections.removeLast());
+          final old = _detections.removeLast();
+          // It must not be looked up, alerted or saved after it is gone.
+          _pending.remove(old);
+          _discardPhotos(old);
         }
       });
       _pending.add(detection);
@@ -128,30 +127,51 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
     _pump();
   }
 
-  void _discardPhotos(_Detection detection) =>
-      detection.photos.then(widget.services.photos.delete);
+  /// Up to [_framesPerDetection] of [frames]: first, middle and last.
+  static List<CapturedFrame> _thin(List<CapturedFrame> frames) {
+    if (frames.length <= _framesPerDetection) return frames;
+    return [frames.first, frames[frames.length ~/ 2], frames.last];
+  }
+
+  void _discardPhotos(_Detection detection) {
+    detection
+      ..evicted = true
+      ..frames = null;
+    unawaited(detection._photos?.then(widget.services.photos.delete));
+  }
 
   void _pump() {
     while (_inFlight < _maxInFlight && _pending.isNotEmpty) {
       final detection = _pending.removeFirst();
       _inFlight++;
-      widget.services.lookup
-          .lookup(detection.plate)
-          .then((result) => _onResult(detection, result))
-          .whenComplete(() {
-            _inFlight--;
-            if (mounted) _pump();
-          });
+      unawaited(
+        widget.services.lookup
+            .lookup(detection.plate)
+            .then((result) => _onResult(detection, result))
+            .whenComplete(() {
+              _inFlight--;
+              if (mounted) _pump();
+            }),
+      );
     }
   }
 
   void _onResult(_Detection detection, VehicleResult result) {
     if (!mounted) return;
+    // A failed lookup says nothing about the car, so let it be checked again.
+    if (result.status == PlateStatus.error) _lastQueued.remove(detection.plate);
     setState(() => detection.result = result);
-    // History keeps alerts and plates the user opens, not a log of every
-    // passing car.
-    if (result.status.isAlert) widget.services.history.add(result);
-    if (result.status.isAlert) _raiseAlert(detection);
+    if (!result.status.isAlert) return;
+    // History and photos keep alerts and plates the user opens, not a log of
+    // every passing car.
+    unawaited(widget.services.history.add(result));
+    unawaited(detection.savePhotos(widget.services.photos));
+    // Don't beep over another car's result screen; show it on return.
+    if (_paused) {
+      _held.add(detection);
+    } else {
+      unawaited(_raiseAlert(detection));
+    }
   }
 
   static const _alertChannel = MethodChannel('plate_scan/alert');
@@ -173,12 +193,14 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
     _alertTimer = Timer(const Duration(seconds: 8), () {
       if (mounted) setState(() => _alert = null);
     });
-    _beep();
-    SemanticsService.sendAnnouncement(
-      View.of(context),
-      'התרעה: ${formatPlate(detection.plate)}, ${detection.result!.status.label}',
-      TextDirection.rtl,
-      assertiveness: Assertiveness.assertive,
+    unawaited(_beep());
+    unawaited(
+      SemanticsService.sendAnnouncement(
+        View.of(context),
+        'התרעה: ${formatPlate(detection.plate)}, ${detection.result!.status.label}',
+        TextDirection.rtl,
+        assertiveness: Assertiveness.assertive,
+      ),
     );
     for (var i = 0; i < 3; i++) {
       await HapticFeedback.heavyImpact();
@@ -189,13 +211,15 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
   Future<void> _open(_Detection detection) async {
     if (_paused) return;
     _paused = true;
-    await _camera.stop();
-    final photos = await detection.photos;
+    await camera.stop();
+    final photos = await detection.savePhotos(widget.services.photos);
     if (!mounted) return;
     final result = detection.result;
     if (result != null && result.status != PlateStatus.error) {
-      widget.services.history.add(result);
+      unawaited(widget.services.history.add(result));
     }
+    // The scanner is covered, so the screen need not stay awake for it.
+    unawaited(WakelockPlus.disable());
     await Navigator.push(
       context,
       MaterialPageRoute<void>(
@@ -211,9 +235,14 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
         ),
       ),
     );
+    if (!mounted) return;
+    unawaited(WakelockPlus.enable());
     _paused = false;
     _voter.reset();
-    if (mounted) _start();
+    unawaited(startCamera());
+    final held = _held.where((d) => d != detection).toList();
+    _held.clear();
+    if (held.isNotEmpty) unawaited(_raiseAlert(held.last));
   }
 
   @override
@@ -256,15 +285,10 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
             child: Stack(
               fit: StackFit.expand,
               children: [
-                if (_error case final error?)
-                  Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(24),
-                      child: Text(error, textAlign: TextAlign.center),
-                    ),
-                  )
+                if (cameraError != null)
+                  buildCameraError()
                 else
-                  CameraView(_camera.controller),
+                  CameraView(camera.controller),
                 if (alert != null)
                   Positioned(
                     top: 8,
@@ -297,6 +321,7 @@ class _ContinuousScanScreenState extends State<ContinuousScanScreen>
                         status: d.result?.status,
                         summary: d.result?.info?.summary,
                         time: formatTime(d.seenAt),
+                        partial: d.result?.partial ?? false,
                         onTap: () => _open(d),
                       );
                     },
