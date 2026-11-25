@@ -8,8 +8,9 @@ plugins {
 }
 
 // Google Play upload key, read from android/key.properties (not in git; see
-// store/PLAY_STORE.md). Without it, release builds fall back to the debug key,
-// which Google Play rejects.
+// store/PLAY_STORE.md). Without it, release APKs fall back to the debug key so
+// the app can still be tried locally, and building a release bundle fails:
+// Google Play rejects a debug-signed bundle.
 val keystorePropertiesFile = rootProject.file("key.properties")
 val keystoreProperties = Properties().apply {
     if (keystorePropertiesFile.exists()) load(FileInputStream(keystorePropertiesFile))
@@ -54,6 +55,15 @@ android {
             signingConfig = if (keystorePropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {
+                val buildsBundle = gradle.startParameter.taskNames.any {
+                    it.contains("bundleRelease", ignoreCase = true)
+                }
+                if (buildsBundle) {
+                    throw GradleException(
+                        "android/key.properties not found: a release bundle must be signed " +
+                            "with the upload key. See store/PLAY_STORE.md."
+                    )
+                }
                 logger.warn("android/key.properties not found: signing release with the debug key")
                 signingConfigs.getByName("debug")
             }
