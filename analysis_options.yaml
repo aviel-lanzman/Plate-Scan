@@ -10,6 +10,10 @@
 include: package:flutter_lints/flutter.yaml
 
 analyzer:
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
   exclude:
     - build/**
     - android/**
@@ -27,8 +31,12 @@ linter:
   # `// ignore_for_file: name_of_lint` syntax on the line or in the file
   # producing the lint.
   rules:
-    # avoid_print: false  # Uncomment to disable the `avoid_print` rule
-    # prefer_single_quotes: true  # Uncomment to enable the `prefer_single_quotes` rule
+    # A dropped future hides failures and ordering bugs, e.g. two history
+    # saves that overlap. Deliberate fire-and-forget calls use unawaited().
+    unawaited_futures: true
+    discarded_futures: true
+    cancel_subscriptions: true
+    avoid_dynamic_calls: true
 
 # Additional information about this file can be found at
 # https://dart.dev/guides/language/analysis-options

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -14,7 +16,7 @@ Future<void> main() async {
   registerNativeLicenses();
   final services = AppServices();
   // No screen is open yet, so any photo on disk was left by a killed app.
-  services.photos.deleteAll();
+  unawaited(services.photos.deleteAll());
   runApp(PlateScanApp(services: services));
 }
 
